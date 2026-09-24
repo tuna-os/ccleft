@@ -1,0 +1,36 @@
+# ccleft serve --config ccleft.yaml
+addr: ":9464"
+refresh: 5m
+
+# Probe API-key providers (KIRO_API_KEY, DEEPSEEK_API_KEY, META_API_KEY,
+# COPILOT_GITHUB_TOKEN) found in ccleft's own environment.
+env_providers: true
+
+# Minimum time between upstream calls for ONE account (all homes that share
+# the account share this budget). Claude's endpoint 429s under fleet polling.
+min_interval:
+  claude: 5m
+  codex: 2m
+
+# Agent homes. Omit `providers` to auto-detect from the files present.
+homes:
+  - path: /data/home
+    label: hive-shared
+  - path: /home/agent2
+    label: agent2
+    providers: [claude, codex, agy]
+    env:
+      CODEX_HOME: /home/agent2/.codex-work
+
+# Extra sources. Secrets are referenced by env var or file, never inlined.
+sources:
+  - provider: kiro
+    label: team-2
+    credentials_env: KIRO_API_KEY_TEAM2
+  - provider: deepseek
+    credentials_file: /run/secrets/deepseek-api-key
+  - provider: copilot
+    label: bot
+    credentials_env: COPILOT_BOT_TOKEN
+
+# agy_path: /usr/local/bin/agy

@@ -1,0 +1,4 @@
+Welcome to Antigravity!
+You are not logged in. Please log in to continue:
+  https://accounts.google.com/o/oauth2/auth?client_id=REDACTED
+Waiting for authentication...

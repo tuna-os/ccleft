@@ -1,0 +1,5 @@
+/ccleft
+/dist/
+*.test
+*.out
+/cmd/ccleft/ccleft

@@ -1,0 +1,15 @@
+{
+  "five_hour": {"utilization": 23.0, "resets_at": "2026-09-24T22:00:00.412337+00:00"},
+  "seven_day": {"utilization": 61.0, "resets_at": "2026-09-27T16:00:00.412354+00:00"},
+  "seven_day_oauth_apps": null,
+  "seven_day_opus": {"utilization": 100.0, "resets_at": "2026-09-27T16:00:00.412362+00:00"},
+  "seven_day_sonnet": {"utilization": 34.0, "resets_at": "2026-09-27T16:00:00.412369+00:00"},
+  "iguana_necktie": null,
+  "extra_usage": {"is_enabled": true, "monthly_limit": 5000, "used_credits": 1234, "utilization": 24.68},
+  "limits": [
+    {"kind": "session", "percent": 23, "resets_at": "2026-09-24T22:00:00Z", "scope": null},
+    {"kind": "weekly_all", "percent": 61, "resets_at": "2026-09-27T16:00:00Z", "scope": null},
+    {"kind": "weekly_scoped", "percent": 100, "resets_at": "2026-09-27T16:00:00Z",
+     "scope": {"model": {"id": "claude-opus", "display_name": "Opus"}}}
+  ]
+}

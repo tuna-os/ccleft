@@ -1,0 +1,26 @@
+{
+ "daysUntilReset": 0,
+ "nextDateReset": 1790812800.0,
+ "overageConfiguration": {"overageStatus": "ENABLED"},
+ "subscriptionInfo": {"subscriptionTitle": "KIRO PRO", "type": "Q_DEVELOPER_STANDALONE_PRO"},
+ "usageBreakdownList": [
+  {
+   "resourceType": "CREDIT",
+   "currentUsage": 1120,
+   "currentUsageWithPrecision": 1120.5,
+   "currentOverages": 120,
+   "currentOveragesWithPrecision": 120.5,
+   "usageLimit": 1000,
+   "usageLimitWithPrecision": 1000.0,
+   "overageCap": "500",
+   "overageCapWithPrecision": "500.0",
+   "nextDateReset": "1790812800",
+   "bonuses": [
+    {"bonusCode": "WELCOME500", "displayName": "Welcome bonus", "status": "ACTIVE",
+     "usageLimit": 500, "usageLimitWithPrecision": 500.0, "currentUsage": 500, "currentUsageWithPrecision": 500.0,
+     "expiresAt": 1791417600},
+    {"bonusCode": "OLD", "status": "EXPIRED", "usageLimit": 100, "currentUsage": 0, "expiresAt": 1780000000}
+   ]
+  }
+ ]
+}

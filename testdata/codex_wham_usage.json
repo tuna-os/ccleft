@@ -1,0 +1,21 @@
+{
+  "user_id": "user-REDACTED0000000000000000",
+  "account_id": "00000000-0000-4000-8000-000000000001",
+  "email": "someone@example.com",
+  "plan_type": "prolite",
+  "rate_limit": {
+    "allowed": false,
+    "limit_reached": true,
+    "primary_window": {"used_percent": 23, "limit_window_seconds": 18000, "reset_after_seconds": 7200, "reset_at": 1790380800},
+    "secondary_window": {"used_percent": 100, "limit_window_seconds": 604800, "reset_after_seconds": 404000, "reset_at": 1790410518}
+  },
+  "code_review_rate_limit": {
+    "allowed": true,
+    "limit_reached": false,
+    "primary_window": {"used_percent": 0, "limit_window_seconds": 604800, "reset_after_seconds": 604800, "reset_at": 1790900000},
+    "secondary_window": null
+  },
+  "additional_rate_limits": null,
+  "credits": {"has_credits": false, "unlimited": false, "balance": "0"},
+  "spend_control": {"reached": false}
+}

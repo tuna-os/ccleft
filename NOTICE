@@ -1,0 +1,21 @@
+ccleft
+Copyright 2026 The tuna-os Authors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Origin
+------
+ccleft's provider probe logic was seeded from the quota probers of Hive
+(https://github.com/hivecommons/hive, src/pkg/rotation), Copyright 2026 The
+KubeStellar Authors, licensed under the Apache License, Version 2.0. In
+particular the normalized limit-window shape, the "failed measurement is never
+headroom" rule, the agy /usage envelope parsing and the
+testdata/agy_usage.json capture (agy 1.2.1) come from that code.
+
+References (no code copied)
+---------------------------
+- OpenUsage (https://github.com/janekbaraniewski/openusage, MIT) — consulted
+  for the Codex wham/usage and Copilot copilot_internal/user field names.
+- CodexBar (MIT) — consulted for endpoint behaviour.
+- ccusage (https://github.com/ryoppippi/ccusage, MIT) — the "spend" half
+  that ccleft complements; no code used.
