@@ -1,5 +1,7 @@
 # ccleft
 
+> **Status:** proposed as the prober implementation for [Hive](https://github.com/hivecommons/hive) in [hivecommons/hive#8753](https://github.com/hivecommons/hive/issues/8753).
+
 **How much AI coding-agent quota is _left_?** The opposite of
 [ccusage](https://github.com/ryoppippi/ccusage).
 
