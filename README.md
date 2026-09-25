@@ -44,7 +44,7 @@ Implementation / test / live status:
 
 | provider | implemented | httptest fixtures | live-verified |
 |---|---|---|---|
-| claude | yes | yes (both payload shapes, 429, expiry, drift) | shape via Hive's production probes; not re-polled here (would add 429 pressure) |
+| claude | yes | yes (both payload shapes, 429, expiry, drift) | **yes** (2026-09-25, Hive production: `five_hour`/`seven_day`/`seven_day_fable` matched the Hive's own probe; 429s carry no `Retry-After`, last-good served `stale`) |
 | codex | yes | yes (string & numeric balance, expiry, API-key login, live weekly-only capture) | **yes** (2026-09-25, Hive production) |
 | agy | yes | yes (real agy 1.2.1 + 1.2.10 captures, login prompt, timeout, env isolation, account dedupe) | **yes** (2026-09-25, agy 1.2.10, read-only `HOME`) |
 | gemini | yes (static verdict) | yes | shutdown verified by evaluation |
