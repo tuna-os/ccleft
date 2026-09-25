@@ -115,6 +115,9 @@ timeouts, the clock, the agy binary and the exec function (for tests).
 - **Single-flight** — concurrent `Get`s for one account share one request.
 - **Per-account rate limit** — at most one upstream call per `MinInterval`
   (claude 3 m, agy 2 m, others 1 m by default); callers in between get the cache.
+  The gate opens 5% (≤ 30 s) early, so a caller that polls at exactly
+  `MinInterval` is not skipped every other round by scheduling jitter;
+  backoff and `Retry-After` are honoured exactly.
 - **Backoff** — 429/network/timeout/5xx: `BaseBackoff` (30 s) doubling to
   `MaxBackoff` (30 m), optional jitter; a longer `Retry-After` always wins.
 - **Last-good** — during those failures (and while a refreshable token is

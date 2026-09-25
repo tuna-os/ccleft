@@ -26,7 +26,8 @@ var DefaultMinInterval = map[Provider]time.Duration{
 //   - per-account keying: sources are keyed by (provider, account
 //     fingerprint), so N homes sharing one account make ONE upstream call;
 //   - single-flight: concurrent Get calls for one account share one call;
-//   - per-account rate limiting: at most one upstream call per MinInterval;
+//   - per-account rate limiting: at most one upstream call per MinInterval
+//     (less a 5%, ≤30 s tolerance for scheduling jitter);
 //   - Retry-After + exponential backoff on 429 / network / 5xx;
 //   - last-good cache: during a transient failure the last good reading is
 //     served with Stale=true and Cause/Message describing the failure.
@@ -82,6 +83,24 @@ type entry struct {
 	lastGood    *Reading
 	failures    int
 	nextAllowed time.Time
+	// slack lets a call through slightly before nextAllowed. Set only when
+	// nextAllowed comes from MinInterval (see minIntervalSlack); zero after a
+	// failure, so backoff and Retry-After are honoured exactly.
+	slack time.Duration
+}
+
+// minIntervalSlack is how early a call may pass the MinInterval gate: 5% of
+// the interval, at most 30 s. A caller polling at exactly MinInterval (ccleft
+// serve refreshes every 5m with a 5m interval) otherwise loses a race of a few
+// hundred milliseconds — the previous probe finished later in its cycle than
+// the next cycle starts — and is served from cache every OTHER time, halving
+// the effective refresh rate.
+func minIntervalSlack(d time.Duration) time.Duration {
+	s := d / 20
+	if s > 30*time.Second {
+		s = 30 * time.Second
+	}
+	return s
 }
 
 type call struct {
@@ -159,7 +178,7 @@ func (c *Client) Get(ctx context.Context, src Source) Reading {
 		c.entries = map[string]*entry{}
 		c.calls = map[string]*call{}
 	}
-	if e := c.entries[key]; e != nil && p.now().Before(e.nextAllowed) {
+	if e := c.entries[key]; e != nil && p.now().Add(e.slack).Before(e.nextAllowed) {
 		r := c.cached(e)
 		c.mu.Unlock()
 		return r
@@ -214,6 +233,7 @@ func (c *Client) record(e *entry, r Reading, prov Provider, now time.Time) Readi
 		e.failures = 0
 		e.last = r
 		e.nextAllowed = now.Add(c.minInterval(prov))
+		e.slack = minIntervalSlack(c.minInterval(prov))
 		if r.State.HasQuota() {
 			g := cloneReading(r)
 			e.lastGood = &g
@@ -221,6 +241,7 @@ func (c *Client) record(e *entry, r Reading, prov Provider, now time.Time) Readi
 		return r
 	}
 	e.failures++
+	e.slack = 0
 	wait := c.backoff(e.failures, r.retryAfter)
 	if mi := c.minInterval(prov); r.State == StateRateLimited && wait < mi {
 		wait = mi
