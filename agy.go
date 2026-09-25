@@ -38,17 +38,54 @@ func agyIdentify(p *Prober, src Source) (credential, *Reading) {
 		r := fail(Agy, StateAuthRequired, "no_credentials", fmt.Errorf("%w: %s missing (run agy and log in)", ErrNoCredentials, tok))
 		return credential{}, &r
 	}
-	c := credential{account: fingerprint(Agy, "home:"+filepath.Clean(src.Home))}
+	c := credential{account: agyAccount(tok, src.Home)}
+	return c, nil
+}
+
+// agyAccount fingerprints the Google account behind an agy token file, so
+// agent homes that share one login (typically via a symlinked ~/.gemini)
+// collapse to ONE reading and ONE CLI run. agy 1.2.x writes
+//
+//	{"auth_method": "consumer", "id_token": "<JWT>",
+//	 "token": {"access_token", "expiry", "refresh_token", "token_type"}}
+//
+// Identity, most stable first: the id_token's `sub` (the Google account id,
+// unchanged across refreshes), its `email`, then the refresh token (nested
+// under "token" or, in older files, top-level). Only when none is readable
+// does the home path stand in — which cannot dedupe across homes.
+func agyAccount(tokPath, home string) string {
 	var t map[string]any
-	if readJSON(tok, &t) == nil {
-		for _, k := range []string{"refresh_token", "refreshToken", "email", "account"} {
-			if s, ok := t[k].(string); ok && s != "" {
-				c.account = fingerprint(Agy, k+":"+s)
-				break
+	if readJSON(tokPath, &t) == nil {
+		str := func(m map[string]any, k string) string {
+			if m == nil {
+				return ""
+			}
+			s, _ := m[k].(string)
+			return strings.TrimSpace(s)
+		}
+		if claims := jwtClaims(str(t, "id_token")); claims != nil {
+			if sub, _ := claims["sub"].(string); sub != "" {
+				return fingerprint(Agy, "sub:"+sub)
+			}
+			if email, _ := claims["email"].(string); email != "" {
+				return fingerprint(Agy, "email:"+strings.ToLower(email))
+			}
+		}
+		nested, _ := t["token"].(map[string]any)
+		for _, m := range []map[string]any{nested, t} {
+			for _, k := range []string{"refresh_token", "refreshToken"} {
+				if s := str(m, k); s != "" {
+					return fingerprint(Agy, "refresh_token:"+s)
+				}
+			}
+		}
+		for _, k := range []string{"email", "account"} {
+			if s := str(t, k); s != "" {
+				return fingerprint(Agy, k+":"+s)
 			}
 		}
 	}
-	return c, nil
+	return fingerprint(Agy, "home:"+filepath.Clean(home))
 }
 
 func agyEnv(src Source, bin string) []string {

@@ -45,12 +45,12 @@ Implementation / test / live status:
 | provider | implemented | httptest fixtures | live-verified |
 |---|---|---|---|
 | claude | yes | yes (both payload shapes, 429, expiry, drift) | shape via Hive's production probes; not re-polled here (would add 429 pressure) |
-| codex | yes | yes (string & numeric balance, expiry, API-key login) | payload shape from Hive's live capture |
-| agy | yes | yes (real agy 1.2.1 capture, login prompt, timeout, env isolation) | capture from Hive |
+| codex | yes | yes (string & numeric balance, expiry, API-key login, live weekly-only capture) | **yes** (2026-09-25, Hive production) |
+| agy | yes | yes (real agy 1.2.1 + 1.2.10 captures, login prompt, timeout, env isolation, account dedupe) | **yes** (2026-09-25, agy 1.2.10, read-only `HOME`) |
 | gemini | yes (static verdict) | yes | shutdown verified by evaluation |
 | kiro | yes | yes (real capture, bonus/overage, AWS error) | **yes** (2026-09-24) |
-| copilot | yes | yes (paid, free, token files, 404) | no |
-| deepseek | yes | yes (ok, exhausted) | no (key not in env for the smoke) |
+| copilot | yes | yes (paid, free, token files, 404, live over-quota capture) | **yes** (2026-09-25, individual plan) |
+| deepseek | yes | yes (ok, exhausted, live negative balance) | **yes** (2026-09-25) |
 | muse | yes (static verdict) | yes | – |
 
 ## Reading
@@ -185,6 +185,28 @@ the agy binary (and its runtime) and set `agy_path`, or run ccleft *inside*
 the agent container/sidecar that already ships agy, pointing `--home` at the
 agent home. Each agy probe boots the CLI (seconds, up to the 90 s deadline),
 which is why agy's default min interval is 2 minutes.
+
+agy 1.2.10 answers `/usage` with a **read-only** `HOME` (it logs that it
+cannot write its log/cache files and carries on), so mount agent homes
+read-only: ccleft then provably cannot write them, and neither can the agy it
+runs. Homes that share one Google login (a symlinked `~/.gemini`) collapse to
+one account via the token's `id_token` subject, so N agent homes cost one agy
+run per interval.
+
+On Kubernetes ≥ 1.33 with containerd ≥ 2.1 the ccleft image can be mounted as
+an **image volume** into a container that already ships agy (no derived image,
+no copy step):
+
+```yaml
+containers:
+  - name: ccleft
+    image: <agent image that has agy>
+    command: [/opt/ccleft/usr/local/bin/ccleft, serve, --config, /etc/ccleft/ccleft.yaml]
+    volumeMounts: [{name: ccleft-bin, mountPath: /opt/ccleft}]
+volumes:
+  - name: ccleft-bin
+    image: {reference: ghcr.io/tuna-os/ccleft:main, pullPolicy: IfNotPresent}
+```
 
 ## Consumers
 

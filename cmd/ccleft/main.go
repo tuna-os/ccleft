@@ -213,17 +213,21 @@ func printTable(w io.Writer, rs []ccleft.Reading) {
 	if len(rs) == 0 {
 		fmt.Fprintln(tw, "(no providers detected)\t\t\t\t\t\t\t")
 	}
+	// Causes/messages are long; printed inside the table they widened the
+	// STATE column for every row. They go below the table, numbered.
+	var notes []string
 	for _, r := range rs {
 		state := string(r.State)
 		if r.Stale {
 			state += " (stale)"
 		}
+		if r.Cause != "" && (r.Stale || r.State != ccleft.StateOK) {
+			notes = append(notes, fmt.Sprintf("[%d] %s %s: %s: %s", len(notes)+1, r.Provider, r.Account, r.Cause, oneLine(r.Message)))
+			state += fmt.Sprintf(" [%d]", len(notes))
+		}
 		homes := strings.Join(r.Homes, ",")
 		if len(r.Windows) == 0 {
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t-\t-\t-\t%s\n", r.Provider, r.Account, state, r.Plan, homes)
-			if r.Cause != "" {
-				fmt.Fprintf(tw, "\t\t  %s: %s\t\t\t\t\t\n", r.Cause, oneLine(r.Message))
-			}
 			continue
 		}
 		for i, win := range r.Windows {
@@ -237,12 +241,12 @@ func printTable(w io.Writer, rs []ccleft.Reading) {
 			}
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", p, a, s, pl, name, left(win), resets(win), h)
 		}
-		if r.Stale || (r.Cause != "" && r.State != ccleft.StateOK) {
-			fmt.Fprintf(tw, "\t\t  %s: %s\t\t\t\t\t\n", r.Cause, oneLine(r.Message))
-		}
 	}
 	tw.Flush()
 	fmt.Fprintln(w, "* = informational window (does not decide the account state)")
+	for _, n := range notes {
+		fmt.Fprintln(w, n)
+	}
 }
 
 func oneLine(s string) string {
