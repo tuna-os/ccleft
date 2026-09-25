@@ -45,9 +45,36 @@ type Client struct {
 	// does not retry in lockstep. Default 0.
 	Jitter float64
 
-	mu      sync.Mutex
-	entries map[string]*entry
-	calls   map[string]*call
+	// OnUpstream, when set, is called after every UPSTREAM probe (an HTTP
+	// request or an agy run) — never for answers served from the cache,
+	// backoff or local files. r is the raw probe result (before last-good
+	// substitution); d is how long the probe took. Use it for logging.
+	OnUpstream func(src Source, r Reading, d time.Duration)
+
+	mu       sync.Mutex
+	entries  map[string]*entry
+	calls    map[string]*call
+	upstream map[UpstreamKey]uint64
+}
+
+// UpstreamKey labels one bucket of upstream probe counts.
+type UpstreamKey struct {
+	Provider Provider
+	State    State
+	Cause    string
+}
+
+// UpstreamCounts returns how many upstream probes (HTTP requests / agy runs)
+// this Client has made since it was created, by provider and outcome. It is
+// the ground truth for "how hard are we polling the quota endpoints".
+func (c *Client) UpstreamCounts() map[UpstreamKey]uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make(map[UpstreamKey]uint64, len(c.upstream))
+	for k, v := range c.upstream {
+		out[k] = v
+	}
+	return out
 }
 
 type entry struct {
@@ -152,9 +179,15 @@ func (c *Client) Get(ctx context.Context, src Source) Reading {
 	c.calls[key] = cl
 	c.mu.Unlock()
 
+	start := p.now()
 	r := p.Probe(ctx, src)
+	took := p.now().Sub(start)
 
 	c.mu.Lock()
+	if c.upstream == nil {
+		c.upstream = map[UpstreamKey]uint64{}
+	}
+	c.upstream[UpstreamKey{Provider: src.Provider, State: r.State, Cause: r.Cause}]++
 	e := c.entries[key]
 	if e == nil {
 		e = &entry{}
@@ -165,6 +198,13 @@ func (c *Client) Get(ctx context.Context, src Source) Reading {
 	delete(c.calls, key)
 	c.mu.Unlock()
 	close(cl.done)
+	if c.OnUpstream != nil {
+		lr := cloneReading(r)
+		if out.RetryAt != nil {
+			lr.RetryAt = out.RetryAt // the effective next attempt, after backoff
+		}
+		c.OnUpstream(src, lr, took)
+	}
 	return cloneReading(out)
 }
 
