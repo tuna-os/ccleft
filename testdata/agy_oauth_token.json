@@ -1,0 +1,10 @@
+{
+  "auth_method": "consumer",
+  "id_token": "eyJhbGciOiJub25lIn0.eyJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20iLCJhenAiOiJzeW50aGV0aWMuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJhdWQiOiJzeW50aGV0aWMuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJzdWIiOiIxMDAwMDAwMDAwMDAwMDAwMDAwMDEiLCJlbWFpbCI6ImFnZW50QGV4YW1wbGUuaW52YWxpZCIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJhdF9oYXNoIjoiU1lOVEhFVElDIiwiaWF0IjoxNzkwMzMyMjg2LCJleHAiOjE3OTAzMzU4ODZ9.SYNTHETIC-SIGNATURE",
+  "token": {
+    "access_token": "ya29.SYNTHETIC-ACCESS-TOKEN",
+    "expiry": "2026-09-25T07:58:05.981309908-04:00",
+    "refresh_token": "1//SYNTHETIC-REFRESH-TOKEN",
+    "token_type": "Bearer"
+  }
+}

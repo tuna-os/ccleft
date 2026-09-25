@@ -146,9 +146,11 @@ func parseCopilotUser(u copilotUser) Reading {
 			notes = append(notes, k+": unlimited")
 			continue
 		}
-		rem := s.Remaining
+		// quota_remaining carries the precise value (-4.2); remaining is the
+		// same number rounded to an integer (-5). Prefer the precise one.
+		rem := s.QuotaRemaining
 		if !rem.OK {
-			rem = s.QuotaRemaining
+			rem = s.Remaining
 		}
 		var w Window
 		switch {
