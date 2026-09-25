@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -116,4 +117,34 @@ func escapeLabel(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, "\n", `\n`)
 	return strings.ReplaceAll(s, `"`, `\"`)
+}
+
+// WriteUpstreamMetrics renders Client.UpstreamCounts as the counter
+//
+//	ccleft_upstream_requests_total{provider,state,cause}
+//
+// so the load ccleft puts on each quota endpoint (and how often it is
+// throttled: state="rate_limited",cause="http_429") is observable.
+func WriteUpstreamMetrics(w io.Writer, counts map[UpstreamKey]uint64) error {
+	keys := make([]UpstreamKey, 0, len(counts))
+	for k := range counts {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		a, b := keys[i], keys[j]
+		if a.Provider != b.Provider {
+			return a.Provider < b.Provider
+		}
+		if a.State != b.State {
+			return a.State < b.State
+		}
+		return a.Cause < b.Cause
+	})
+	bw := bufio.NewWriter(w)
+	fmt.Fprint(bw, "# HELP ccleft_upstream_requests_total Upstream quota probes (HTTP requests or agy runs) made, by outcome.\n# TYPE ccleft_upstream_requests_total counter\n")
+	for _, k := range keys {
+		fmt.Fprintf(bw, "ccleft_upstream_requests_total%s %d\n",
+			fmtLabels([][2]string{{"provider", string(k.Provider)}, {"state", string(k.State)}, {"cause", k.Cause}}), counts[k])
+	}
+	return bw.Flush()
 }

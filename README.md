@@ -154,8 +154,13 @@ never inlined; unknown keys are rejected.
 | `ccleft_stale`, `ccleft_fetched_timestamp_seconds` | provider, account |
 | `ccleft_info` | provider, account, plan, cause |
 | `ccleft_last_refresh_timestamp_seconds` | – |
+| `ccleft_upstream_requests_total` (counter) | provider, state, cause — one per upstream HTTP request / agy run; cache, min-interval and backoff answers are not counted |
 
 Example alert: `min by (provider, account) (ccleft_remaining_ratio{binding="true"}) < 0.1`.
+
+Upstream load: `sum by (provider) (increase(ccleft_upstream_requests_total[1h]))`;
+throttling: `ccleft_upstream_requests_total{state="rate_limited"}`. `serve` also
+logs one `upstream` line per call.
 
 ## Fleet / sidecar use
 

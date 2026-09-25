@@ -105,7 +105,7 @@ sources:
 }
 
 func TestServeRoutes(t *testing.T) {
-	s := &server{}
+	s := &server{client: ccleft.NewClient(nil)}
 	h := s.routes()
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/healthz", nil))
@@ -131,6 +131,7 @@ func TestServeRoutes(t *testing.T) {
 		`ccleft_remaining{provider="deepseek",account="abc",window="balance:usd",kind="balance",scope="",binding="true",unit="usd"} 40`,
 		`ccleft_state{provider="claude",account="def",state="rate_limited"} 1`,
 		`ccleft_last_refresh_timestamp_seconds 1790000000`,
+		`# TYPE ccleft_upstream_requests_total counter`,
 	} {
 		if !strings.Contains(m, want) {
 			t.Fatalf("missing %s in\n%s", want, m)

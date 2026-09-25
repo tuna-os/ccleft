@@ -284,9 +284,10 @@ func resets(w ccleft.Window) string {
 
 // server holds the latest snapshot.
 type server struct {
-	mu   sync.RWMutex
-	last Output
-	err  error
+	mu     sync.RWMutex
+	last   Output
+	err    error
+	client *ccleft.Client
 }
 
 func (s *server) set(o Output, err error) {
@@ -327,6 +328,9 @@ func (s *server) routes() *http.ServeMux {
 		o, _ := s.get()
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 		_ = ccleft.WritePrometheus(w, o.Readings)
+		if s.client != nil {
+			_ = ccleft.WriteUpstreamMetrics(w, s.client.UpstreamCounts())
+		}
 		if !o.GeneratedAt.IsZero() {
 			fmt.Fprintf(w, "# HELP ccleft_last_refresh_timestamp_seconds Unix time of the last refresh cycle.\n# TYPE ccleft_last_refresh_timestamp_seconds gauge\nccleft_last_refresh_timestamp_seconds %d\n", o.GeneratedAt.Unix())
 		}
@@ -378,7 +382,20 @@ func runServe(args []string) error {
 	client := c.client(cfg)
 	client.Jitter = 0.1
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	srv := &server{}
+	// One line per upstream call (HTTP request / agy run) — cache hits and
+	// backoff are silent — so the load on each quota endpoint is auditable
+	// from the logs as well as from ccleft_upstream_requests_total.
+	client.OnUpstream = func(src ccleft.Source, r ccleft.Reading, d time.Duration) {
+		attrs := []any{"provider", r.Provider, "account", r.Account, "state", r.State, "took", d.Round(time.Millisecond).String()}
+		if r.Cause != "" {
+			attrs = append(attrs, "cause", r.Cause)
+		}
+		if r.RetryAt != nil {
+			attrs = append(attrs, "retry_after", time.Until(*r.RetryAt).Round(time.Second).String())
+		}
+		log.Info("upstream", attrs...)
+	}
+	srv := &server{client: client}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
