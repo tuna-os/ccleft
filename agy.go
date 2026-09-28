@@ -22,7 +22,7 @@ import (
 // carries groups[].buckets[] with remaining_fraction and reset_time. The
 // request consumes no model turn (num_turns 0, total_tokens 0).
 
-func init() { register(Agy, impl{identify: agyIdentify, fetch: agyFetch}) }
+func init() { registerLegacy(Agy, agyIdentify, agyFetch) }
 
 func agyTokenPath(src Source) string {
 	return src.path(".gemini", "antigravity-cli", "antigravity-oauth-token")

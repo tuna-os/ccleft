@@ -22,7 +22,7 @@ import (
 
 const codexBaseURL = "https://chatgpt.com/backend-api"
 
-func init() { register(Codex, impl{identify: codexIdentify, fetch: codexFetch}) }
+func init() { registerLegacy(Codex, codexIdentify, codexFetch) }
 
 type codexAuth struct {
 	APIKey *string `json:"OPENAI_API_KEY"`

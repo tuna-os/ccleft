@@ -23,7 +23,7 @@ import (
 
 const kiroBaseURL = "https://q.us-east-1.amazonaws.com"
 
-func init() { register(Kiro, impl{identify: kiroIdentify, fetch: kiroFetch}) }
+func init() { registerLegacy(Kiro, kiroIdentify, kiroFetch) }
 
 func kiroIdentify(p *Prober, src Source) (credential, *Reading) {
 	key := firstNonEmpty(src.Credentials, src.env("KIRO_API_KEY"))

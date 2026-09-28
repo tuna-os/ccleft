@@ -28,7 +28,7 @@ const (
 	claudeOAuthBeta = "oauth-2025-04-20"
 )
 
-func init() { register(Claude, impl{identify: claudeIdentify, fetch: claudeFetch}) }
+func init() { registerLegacy(Claude, claudeIdentify, claudeFetch) }
 
 type claudeCreds struct {
 	OAuth *struct {
