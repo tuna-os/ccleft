@@ -26,7 +26,7 @@ import (
 
 const copilotBaseURL = "https://api.github.com"
 
-func init() { register(Copilot, impl{identify: copilotIdentify, fetch: copilotFetch}) }
+func init() { registerLegacy(Copilot, copilotIdentify, copilotFetch) }
 
 func copilotConfigDir(src Source) string {
 	if x := src.env("XDG_CONFIG_HOME"); x != "" {

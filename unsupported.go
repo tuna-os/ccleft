@@ -19,8 +19,8 @@ import (
 var errGeminiShutdown = errors.New("Google shut down quota reads for Gemini CLI personal OAuth in June 2026: loadCodeAssist returns UNSUPPORTED_CLIENT and retrieveUserQuota returns PERMISSION_DENIED; no remaining-quota source exists for this login type")
 
 func init() {
-	register(Gemini, impl{identify: geminiIdentify, fetch: unreachableFetch})
-	register(Muse, impl{identify: museIdentify, fetch: unreachableFetch})
+	registerLegacy(Gemini, geminiIdentify, unreachableFetch)
+	registerLegacy(Muse, museIdentify, unreachableFetch)
 }
 
 func unreachableFetch(ctx context.Context, p *Prober, src Source, c credential) Reading {

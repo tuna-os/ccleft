@@ -64,14 +64,6 @@ type credential struct {
 	extra   map[string]string
 }
 
-type impl struct {
-	identify func(p *Prober, src Source) (credential, *Reading)
-	fetch    func(ctx context.Context, p *Prober, src Source, c credential) Reading
-}
-
-var impls = map[Provider]impl{}
-
-func register(p Provider, i impl) { impls[p] = i }
 
 func (p *Prober) now() time.Time {
 	if p.Now != nil {
@@ -108,12 +100,12 @@ func (p *Prober) client() *http.Client {
 // only (no network). When no usable credential exists it returns a terminal
 // Reading (auth_required / unsupported) instead.
 func (p *Prober) Identify(src Source) (account string, terminal *Reading) {
-	i, ok := impls[src.Provider]
-	if !ok {
+	impl := getProvider(src.Provider)
+	if impl == nil {
 		r := fail(src.Provider, StateError, "unknown_provider", fmt.Errorf("unknown provider %q", src.Provider))
 		return "", &r
 	}
-	c, t := i.identify(p, src)
+	c, t := impl.Identify(p, src)
 	if t != nil {
 		p.finish(t, src, c)
 		return c.account, t
@@ -123,18 +115,18 @@ func (p *Prober) Identify(src Source) (account string, terminal *Reading) {
 
 // Probe measures src once.
 func (p *Prober) Probe(ctx context.Context, src Source) Reading {
-	i, ok := impls[src.Provider]
-	if !ok {
+	impl := getProvider(src.Provider)
+	if impl == nil {
 		return fail(src.Provider, StateError, "unknown_provider", fmt.Errorf("unknown provider %q", src.Provider))
 	}
-	c, t := i.identify(p, src)
+	c, t := impl.Identify(p, src)
 	if t != nil {
 		p.finish(t, src, c)
 		return *t
 	}
 	ctx, cancel := context.WithTimeout(ctx, p.timeout(src.Provider))
 	defer cancel()
-	r := i.fetch(ctx, p, src, c)
+	r := impl.Fetch(ctx, p, src, c)
 	p.finish(&r, src, c)
 	return r
 }

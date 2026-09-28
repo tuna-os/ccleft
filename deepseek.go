@@ -14,7 +14,7 @@ import (
 
 const deepSeekBaseURL = "https://api.deepseek.com"
 
-func init() { register(DeepSeek, impl{identify: deepSeekIdentify, fetch: deepSeekFetch}) }
+func init() { registerLegacy(DeepSeek, deepSeekIdentify, deepSeekFetch) }
 
 func deepSeekIdentify(p *Prober, src Source) (credential, *Reading) {
 	key := firstNonEmpty(src.Credentials, src.env("DEEPSEEK_API_KEY"))
