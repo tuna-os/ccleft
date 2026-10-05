@@ -38,7 +38,14 @@ const (
 )
 
 // Providers lists every provider ccleft knows, in display order.
-var Providers = []Provider{Claude, Codex, Agy, Gemini, Kiro, Copilot, DeepSeek, Muse}
+// Providers is initialized at package init time from registered implementations.
+// It maintains the canonical display order and ensures consistency between the
+// registry (prober.go) and the provider list used for commands/display.
+var Providers []Provider
+
+func init() {
+	Providers = RegisteredProviders()
+}
 
 // ParseProvider validates a provider name.
 func ParseProvider(s string) (Provider, error) {
