@@ -71,7 +71,26 @@ type impl struct {
 
 var impls = map[Provider]impl{}
 
+// providerOrder maintains the canonical display order for providers.
+// This is the source of truth for provider ordering; the Providers list
+// in reading.go is derived from this at init time.
+var providerOrder = []Provider{
+	Claude, Codex, Agy, Gemini, Kiro, Copilot, DeepSeek, Muse,
+}
+
 func register(p Provider, i impl) { impls[p] = i }
+
+// RegisteredProviders returns the list of all registered providers in canonical order.
+// This is computed at init time after all provider init() functions have registered.
+func RegisteredProviders() []Provider {
+	var result []Provider
+	for _, p := range providerOrder {
+		if _, ok := impls[p]; ok {
+			result = append(result, p)
+		}
+	}
+	return result
+}
 
 func (p *Prober) now() time.Time {
 	if p.Now != nil {
