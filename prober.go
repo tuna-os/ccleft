@@ -64,9 +64,73 @@ type credential struct {
 	extra   map[string]string
 }
 
+// impl defines the provider implementation contract.
+// Each provider registers one impl that implements two required callbacks.
+//
+// CONTRACT: identify()
+//
+// identify() discovers and validates credentials for the provider from local sources
+// (credential files in Source.Home, environment variables). It performs no network I/O.
+//
+// Requirements:
+//   - Return (cred, nil) if credentials are found and valid
+//   - Return (credential{}, reading) with State=StateAuthRequired if credentials are missing,
+//     expired, or invalid (e.g., malformed token)
+//   - Populate credential.token with the raw authentication material
+//   - Populate credential.account with a stable fingerprint (e.g., username, account ID)
+//   - Populate credential.plan if plan info is available locally (e.g., from config file)
+//   - Use credential.extra for provider-specific metadata
+//   - Never call fetch() or make network requests
+//   - Return quickly; identify() is called before rate-limit checks
+//
+// CONTRACT: fetch()
+//
+// fetch() queries the provider's quota endpoint with the credential and returns the result.
+// It must be resilient to transient errors and respect context deadlines.
+//
+// Requirements:
+//   - Obey ctx deadline strictly; return Reading with State=StateTimeout if exceeded
+//   - For HTTP endpoints:
+//   - If status 429 (Too Many Requests), return Reading with State=StateRateLimited
+//     and set RetryAt from Retry-After header if present
+//   - If status 401/403 (auth failure), return Reading with State=StateAuthRequired
+//   - If status 5xx or network error, return Reading with State=StateUnavailable
+//   - For CLI/file-based providers, return StateUnavailable if the tool/file is unreachable
+//   - On success, return Reading with State=StateOK/StateLimited/StateExhausted as appropriate
+//   - Always return a populated Reading; never return error (nil Reading)
+//   - Populate Reading.Windows with all applicable quota windows (5h, daily, weekly, etc.)
+//     Each window must have Used, Limit, ResetAt, and State fields set
+//   - Handle partial failures gracefully (if some windows are available, return them)
+//   - Never retry within fetch(); the Client layer handles retries via Retry-After
+//   - Timeout on reads; do not block indefinitely
+//
+// # CREDENTIAL DISCOVERY
+//
+// Each provider must check credentials in this order:
+// 1. Environment variable (if defined in provider's docs)
+// 2. XDG config/cache in Source.Home (for OAuth, config files, etc.)
+// 3. CLI tool output (e.g., 'gcloud auth list')
+// 4. Credential cache files in Source.Home/.cache or similar
+//
+// Providers must NOT read from:
+// - The process's $HOME (always use Source.Home)
+// - Global /etc or system paths (only ~/.config, ~/.cache, etc.)
+// - The process's environment variables directly; Source.Home takes precedence
+//
+// # ERROR CLASSIFICATION
+//
+// Providers must classify errors into one of these Reading states:
+//   - StateOK/StateLimited/StateExhausted: normal operation (quota state)
+//   - StateRateLimited: HTTP 429; include Retry-After if available
+//   - StateAuthRequired: missing, invalid, or expired credentials
+//   - StateTimeout: context deadline exceeded
+//   - StateUnavailable: provider unreachable (5xx, network error, tool missing)
+//   - StateUnsupported: provider does not support this credential type (terminal)
 type impl struct {
+	// identify discovers credentials from local sources. See CONTRACT above.
 	identify func(p *Prober, src Source) (credential, *Reading)
-	fetch    func(ctx context.Context, p *Prober, src Source, c credential) Reading
+	// fetch queries the provider's quota endpoint. See CONTRACT above.
+	fetch func(ctx context.Context, p *Prober, src Source, c credential) Reading
 }
 
 var impls = map[Provider]impl{}
