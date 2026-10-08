@@ -91,10 +91,10 @@ type credential struct {
 // Requirements:
 //   - Obey ctx deadline strictly; return Reading with State=StateTimeout if exceeded
 //   - For HTTP endpoints:
-//     * If status 429 (Too Many Requests), return Reading with State=StateRateLimited
-//       and set RetryAt from Retry-After header if present
-//     * If status 401/403 (auth failure), return Reading with State=StateAuthRequired
-//     * If status 5xx or network error, return Reading with State=StateUnavailable
+//   - If status 429 (Too Many Requests), return Reading with State=StateRateLimited
+//     and set RetryAt from Retry-After header if present
+//   - If status 401/403 (auth failure), return Reading with State=StateAuthRequired
+//   - If status 5xx or network error, return Reading with State=StateUnavailable
 //   - For CLI/file-based providers, return StateUnavailable if the tool/file is unreachable
 //   - On success, return Reading with State=StateOK/StateLimited/StateExhausted as appropriate
 //   - Always return a populated Reading; never return error (nil Reading)
@@ -104,7 +104,7 @@ type credential struct {
 //   - Never retry within fetch(); the Client layer handles retries via Retry-After
 //   - Timeout on reads; do not block indefinitely
 //
-// CREDENTIAL DISCOVERY
+// # CREDENTIAL DISCOVERY
 //
 // Each provider must check credentials in this order:
 // 1. Environment variable (if defined in provider's docs)
@@ -117,7 +117,7 @@ type credential struct {
 // - Global /etc or system paths (only ~/.config, ~/.cache, etc.)
 // - The process's environment variables directly; Source.Home takes precedence
 //
-// ERROR CLASSIFICATION
+// # ERROR CLASSIFICATION
 //
 // Providers must classify errors into one of these Reading states:
 //   - StateOK/StateLimited/StateExhausted: normal operation (quota state)
@@ -126,12 +126,11 @@ type credential struct {
 //   - StateTimeout: context deadline exceeded
 //   - StateUnavailable: provider unreachable (5xx, network error, tool missing)
 //   - StateUnsupported: provider does not support this credential type (terminal)
-//
 type impl struct {
 	// identify discovers credentials from local sources. See CONTRACT above.
 	identify func(p *Prober, src Source) (credential, *Reading)
 	// fetch queries the provider's quota endpoint. See CONTRACT above.
-	fetch    func(ctx context.Context, p *Prober, src Source, c credential) Reading
+	fetch func(ctx context.Context, p *Prober, src Source, c credential) Reading
 }
 
 var impls = map[Provider]impl{}
