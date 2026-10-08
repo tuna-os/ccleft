@@ -73,6 +73,24 @@ var impls = map[Provider]impl{}
 
 func register(p Provider, i impl) { impls[p] = i }
 
+// RegisteredProviders returns all registered providers in alphabetical order.
+// This ensures a deterministic, single source of truth for provider enumeration.
+func RegisteredProviders() []Provider {
+	providers := make([]Provider, 0, len(impls))
+	for p := range impls {
+		providers = append(providers, p)
+	}
+	// Sort for deterministic iteration order
+	for i := 0; i < len(providers); i++ {
+		for j := i + 1; j < len(providers); j++ {
+			if string(providers[i]) > string(providers[j]) {
+				providers[i], providers[j] = providers[j], providers[i]
+			}
+		}
+	}
+	return providers
+}
+
 func (p *Prober) now() time.Time {
 	if p.Now != nil {
 		return p.Now()
