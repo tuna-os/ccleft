@@ -52,13 +52,13 @@ func claudeIdentify(p *Prober, src Source) (credential, *Reading) {
 	}
 	dir := claudeConfigDir(src)
 	if dir == "" {
-		r := fail(Claude, StateAuthRequired, "no_credentials", fmt.Errorf("%w: no home or CLAUDE_CONFIG_DIR given", ErrNoCredentials))
+		r := ClassifyNoCredentials(Claude, "no home or CLAUDE_CONFIG_DIR given")
 		return credential{}, &r
 	}
 	path := filepath.Join(dir, ".credentials.json")
 	var cf claudeCreds
 	if err := readJSON(path, &cf); err != nil {
-		r := fail(Claude, StateAuthRequired, "no_credentials", fmt.Errorf("%w: %v", ErrNoCredentials, err))
+		r := ClassifyNoCredentials(Claude, err.Error())
 		return credential{}, &r
 	}
 	c := credential{account: claudeAccount(src, dir, cf)}
@@ -71,15 +71,15 @@ func claudeIdentify(p *Prober, src Source) (credential, *Reading) {
 	c.token = cf.OAuth.AccessToken
 	c.plan = cf.OAuth.SubscriptionType
 	if exp := cf.OAuth.ExpiresAt; exp > 0 && exp <= p.now().UnixMilli() {
+		expTime := time.UnixMilli(exp)
 		if cf.OAuth.RefreshToken != "" {
 			// The CLI refreshes on its next request. ccleft never refreshes
 			// (that would rewrite the file under a running agent), so this is
 			// transient: serve last-good until the CLI rotates the token.
-			r := fail(Claude, StateAuthRequired, "token_expired", fmt.Errorf("access token expired at %s; refresh token present, Claude Code refreshes on next use (ccleft never refreshes)", time.UnixMilli(exp).UTC().Format(time.RFC3339)))
-			r.transient = true
+			r := ClassifyTokenExpired(Claude, expTime, true, "Claude Code refreshes on next use (ccleft never refreshes)")
 			return c, &r
 		}
-		r := fail(Claude, StateAuthRequired, "login_expired", fmt.Errorf("access token expired and no refresh token: run /login"))
+		r := ClassifyTokenExpired(Claude, expTime, false, "run /login")
 		return c, &r
 	}
 	return c, nil
@@ -126,7 +126,7 @@ func claudeFetch(ctx context.Context, p *Prober, src Source, c credential) Readi
 	}
 	ws, err := parseClaudeUsage(raw)
 	if err != nil {
-		return fail(Claude, StateError, "schema", err)
+		return ClassifySchemaError(Claude, err)
 	}
 	return Reading{Windows: ws}
 }

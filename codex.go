@@ -78,13 +78,13 @@ func codexIdentify(p *Prober, src Source) (credential, *Reading) {
 	}
 	dir := codexHome(src)
 	if dir == "" {
-		r := fail(Codex, StateAuthRequired, "no_credentials", fmt.Errorf("%w: no home or CODEX_HOME given", ErrNoCredentials))
+		r := ClassifyNoCredentials(Codex, "no home or CODEX_HOME given")
 		return credential{}, &r
 	}
 	path := filepath.Join(dir, "auth.json")
 	var a codexAuth
 	if err := readJSON(path, &a); err != nil {
-		r := fail(Codex, StateAuthRequired, "no_credentials", fmt.Errorf("%w: %v", ErrNoCredentials, err))
+		r := ClassifyNoCredentials(Codex, err.Error())
 		return credential{}, &r
 	}
 	if a.Tokens == nil || strings.TrimSpace(a.Tokens.AccessToken) == "" {
@@ -110,8 +110,8 @@ func codexIdentify(p *Prober, src Source) (credential, *Reading) {
 		c.account = fingerprint(Codex, "token:"+a.Tokens.AccessToken)
 	}
 	if exp, ok := claims["exp"].(float64); ok && int64(exp) <= p.now().Unix() {
-		r := fail(Codex, StateAuthRequired, "token_expired", fmt.Errorf("access token expired at %s; codex refreshes it on next use (ccleft never refreshes or runs codex)", time.Unix(int64(exp), 0).UTC().Format(time.RFC3339)))
-		r.transient = true
+		expTime := time.Unix(int64(exp), 0)
+		r := ClassifyTokenExpired(Codex, expTime, true, "codex refreshes it on next use (ccleft never refreshes or runs codex)")
 		return c, &r
 	}
 	return c, nil
@@ -246,7 +246,7 @@ func parseCodexUsage(u codexUsage, now time.Time) Reading {
 		addLimit(a.RateLimit, strings.ToLower(firstNonEmpty(a.MeteredFeature, a.LimitName, "additional")))
 	}
 	if len(ws) == 0 {
-		return fail(Codex, StateError, "schema", errors.New("codex usage: no rate_limit window carried a percentage (unrecognized schema)"))
+		return ClassifySchemaError(Codex, errors.New("codex usage: no rate_limit window carried a percentage (unrecognized schema)"))
 	}
 	r := Reading{Plan: u.PlanType}
 	var notes []string

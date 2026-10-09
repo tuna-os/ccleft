@@ -30,12 +30,12 @@ func agyTokenPath(src Source) string {
 
 func agyIdentify(p *Prober, src Source) (credential, *Reading) {
 	if src.Home == "" {
-		r := fail(Agy, StateAuthRequired, "no_credentials", fmt.Errorf("%w: agy needs a home directory", ErrNoCredentials))
+		r := ClassifyNoCredentials(Agy, "agy needs a home directory")
 		return credential{}, &r
 	}
 	tok := agyTokenPath(src)
 	if !fileExists(tok) {
-		r := fail(Agy, StateAuthRequired, "no_credentials", fmt.Errorf("%w: %s missing (run agy and log in)", ErrNoCredentials, tok))
+		r := ClassifyNoCredentials(Agy, fmt.Sprintf("%s missing (run agy and log in)", tok))
 		return credential{}, &r
 	}
 	c := credential{account: agyAccount(tok, src.Home)}
@@ -202,7 +202,7 @@ func agyKind(window string) Kind {
 func parseAgyUsage(b []byte) Reading {
 	var env agyEnvelope
 	if err := json.Unmarshal(b, &env); err != nil {
-		return fail(Agy, StateError, "schema", fmt.Errorf("agy /usage envelope: %w", err))
+		return ClassifySchemaError(Agy, fmt.Errorf("agy /usage envelope: %w", err))
 	}
 	if env.Status != "" && env.Status != "SUCCESS" {
 		detail := fmt.Sprintf("agy /usage status %q: %s", env.Status, snippet([]byte(env.Response)))
@@ -212,10 +212,10 @@ func parseAgyUsage(b []byte) Reading {
 		return fail(Agy, StateError, "status_"+strings.ToLower(env.Status), errors.New(detail))
 	}
 	if env.Command == nil || env.Command.Data == nil || len(env.Command.Data.Groups) == 0 {
-		return fail(Agy, StateError, "schema", errors.New("agy /usage: no command.data.groups (unrecognized schema)"))
+		return ClassifySchemaError(Agy, errors.New("agy /usage: no command.data.groups (unrecognized schema)"))
 	}
 	if env.Command.Name != "" && env.Command.Name != "usage" {
-		return fail(Agy, StateError, "schema", fmt.Errorf("agy /usage: envelope is for command %q", env.Command.Name))
+		return ClassifySchemaError(Agy, fmt.Errorf("agy /usage: envelope is for command %q", env.Command.Name))
 	}
 	var ws []Window
 	for _, g := range env.Command.Data.Groups {
@@ -236,7 +236,7 @@ func parseAgyUsage(b []byte) Reading {
 		}
 	}
 	if len(ws) == 0 {
-		return fail(Agy, StateError, "schema", errors.New("agy /usage: no bucket carried remaining_fraction (unrecognized schema)"))
+		return ClassifySchemaError(Agy, errors.New("agy /usage: no bucket carried remaining_fraction (unrecognized schema)"))
 	}
 	return Reading{Windows: ws}
 }
