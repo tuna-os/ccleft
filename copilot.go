@@ -3,7 +3,6 @@ package ccleft
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"path/filepath"
 	"sort"

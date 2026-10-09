@@ -3,7 +3,6 @@ package ccleft
 import (
 	"context"
 	"errors"
-	"fmt"
 )
 
 // Gemini CLI (personal Google OAuth): Google shut the Code Assist quota
