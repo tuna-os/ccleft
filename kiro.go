@@ -28,7 +28,7 @@ func init() { register(Kiro, impl{identify: kiroIdentify, fetch: kiroFetch}) }
 func kiroIdentify(p *Prober, src Source) (credential, *Reading) {
 	key := firstNonEmpty(src.Credentials, src.env("KIRO_API_KEY"))
 	if key == "" {
-		r := fail(Kiro, StateAuthRequired, "no_credentials", fmt.Errorf("%w: KIRO_API_KEY not set", ErrNoCredentials))
+		r := ClassifyNoCredentials(Kiro, "KIRO_API_KEY not set")
 		return credential{}, &r
 	}
 	return credential{token: strings.TrimSpace(key), account: fingerprint(Kiro, "key:"+strings.TrimSpace(key))}, nil
@@ -115,7 +115,7 @@ func kiroFetch(ctx context.Context, p *Prober, src Source, c credential) Reading
 
 func parseKiroUsage(kr kiroResp) Reading {
 	if len(kr.UsageBreakdownList) == 0 {
-		return fail(Kiro, StateError, "schema", errors.New("kiro GetUsageLimits: empty usageBreakdownList (unrecognized schema)"))
+		return ClassifySchemaError(Kiro, errors.New("kiro GetUsageLimits: empty usageBreakdownList (unrecognized schema)"))
 	}
 	overageOn := kr.OverageConfiguration != nil && kr.OverageConfiguration.OverageStatus != "" &&
 		!strings.EqualFold(kr.OverageConfiguration.OverageStatus, "DISABLED")
@@ -124,7 +124,7 @@ func parseKiroUsage(kr kiroResp) Reading {
 	for i, b := range kr.UsageBreakdownList {
 		used, limit := prec(b.CurrentUsageWithPrecision, b.CurrentUsage), prec(b.UsageLimitWithPrecision, b.UsageLimit)
 		if !used.OK || !limit.OK {
-			return fail(Kiro, StateError, "schema", fmt.Errorf("kiro usageBreakdownList[%d]: missing currentUsage/usageLimit", i))
+			return ClassifySchemaError(Kiro, fmt.Errorf("kiro usageBreakdownList[%d]: missing currentUsage/usageLimit", i))
 		}
 		over := prec(b.CurrentOveragesWithPrecision, b.CurrentOverages).V
 		reset := parseTime(b.NextDateReset)

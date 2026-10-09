@@ -19,7 +19,7 @@ func init() { register(DeepSeek, impl{identify: deepSeekIdentify, fetch: deepSee
 func deepSeekIdentify(p *Prober, src Source) (credential, *Reading) {
 	key := firstNonEmpty(src.Credentials, src.env("DEEPSEEK_API_KEY"))
 	if key == "" {
-		r := fail(DeepSeek, StateAuthRequired, "no_credentials", fmt.Errorf("%w: DEEPSEEK_API_KEY not set", ErrNoCredentials))
+		r := ClassifyNoCredentials(DeepSeek, "DEEPSEEK_API_KEY not set")
 		return credential{}, &r
 	}
 	key = strings.TrimSpace(key)
@@ -56,7 +56,7 @@ func parseDeepSeekBalance(b deepSeekBalance) Reading {
 		ws = append(ws, Window{ID: "balance:" + cur, Kind: KindBalance, Binding: true, Remaining: f64(bi.TotalBalance.V), Unit: cur})
 	}
 	if len(ws) == 0 {
-		return fail(DeepSeek, StateError, "schema", errors.New("deepseek /user/balance: no balance_infos[].total_balance (unrecognized schema)"))
+		return ClassifySchemaError(DeepSeek, errors.New("deepseek /user/balance: no balance_infos[].total_balance (unrecognized schema)"))
 	}
 	r := Reading{Windows: ws}
 	r.State = deriveState(ws)

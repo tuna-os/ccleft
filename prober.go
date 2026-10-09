@@ -172,17 +172,14 @@ func (p *Prober) httpJSON(ctx context.Context, pr Provider, req *http.Request, o
 	req.Header.Set("Accept", "application/json")
 	resp, err := p.client().Do(req)
 	if err != nil {
-		cause := "network"
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			cause = "timeout"
-		}
-		r := fail(pr, StateError, cause, fmt.Errorf("%s %s: %w", req.Method, redactURL(req), err))
+		isTimeout := errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded)
+		r := ClassifyNetworkError(pr, fmt.Errorf("%s %s: %w", req.Method, redactURL(req), err), isTimeout)
 		return &r
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
-		r := fail(pr, StateError, "network", fmt.Errorf("reading response: %w", err))
+		r := ClassifyNetworkError(pr, fmt.Errorf("reading response: %w", err), false)
 		return &r
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
@@ -190,32 +187,14 @@ func (p *Prober) httpJSON(ctx context.Context, pr Provider, req *http.Request, o
 		return &r
 	}
 	if err := json.Unmarshal(body, out); err != nil {
-		r := fail(pr, StateError, "schema", fmt.Errorf("decoding %s response: %w (body: %s)", pr, err, snippet(body)))
+		r := ClassifySchemaError(pr, fmt.Errorf("decoding %s response: %w (body: %s)", pr, err, snippet(body)))
 		return &r
 	}
 	return nil
 }
 
 func classifyHTTP(pr Provider, resp *http.Response, body []byte, now time.Time) Reading {
-	code := resp.StatusCode
-	err := fmt.Errorf("HTTP %d: %s", code, snippet(body))
-	cause := "http_" + strconv.Itoa(code)
-	switch {
-	case code == http.StatusTooManyRequests:
-		r := fail(pr, StateRateLimited, cause, err)
-		r.retryAfter = ParseRetryAfter(resp.Header.Get("Retry-After"), now)
-		return r
-	case code == http.StatusUnauthorized || code == http.StatusForbidden:
-		return fail(pr, StateAuthRequired, cause, err)
-	case code >= 500:
-		r := fail(pr, StateError, cause, err)
-		if ra := ParseRetryAfter(resp.Header.Get("Retry-After"), now); ra > 0 {
-			r.retryAfter = ra
-		}
-		return r
-	default:
-		return fail(pr, StateError, cause, err)
-	}
+	return ClassifyHTTPResponse(pr, resp, body, now)
 }
 
 // ParseRetryAfter parses a Retry-After header (delta-seconds or HTTP-date).

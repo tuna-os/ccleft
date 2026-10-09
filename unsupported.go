@@ -48,7 +48,7 @@ func geminiIdentify(p *Prober, src Source) (credential, *Reading) {
 		c := credential{account: fingerprint(Gemini, "key:"+k)}
 		return c, &r
 	}
-	r := fail(Gemini, StateAuthRequired, "no_credentials", fmt.Errorf("%w: no ~/.gemini/oauth_creds.json or GEMINI_API_KEY", ErrNoCredentials))
+	r := ClassifyNoCredentials(Gemini, "no ~/.gemini/oauth_creds.json or GEMINI_API_KEY")
 	return credential{}, &r
 }
 
@@ -57,6 +57,6 @@ func museIdentify(p *Prober, src Source) (credential, *Reading) {
 		r := fail(Muse, StateUnsupported, "api_key_login", errors.New("Muse API-key logins cannot read the subscription quota; only the device-code (OAuth) login exposes it (not yet implemented)"))
 		return credential{account: fingerprint(Muse, "key:"+k)}, &r
 	}
-	r := fail(Muse, StateAuthRequired, "no_credentials", fmt.Errorf("%w: no META_API_KEY", ErrNoCredentials))
+	r := ClassifyNoCredentials(Muse, "no META_API_KEY")
 	return credential{}, &r
 }

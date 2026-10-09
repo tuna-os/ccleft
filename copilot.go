@@ -83,7 +83,7 @@ func copilotToken(src Source) (string, string) {
 func copilotIdentify(p *Prober, src Source) (credential, *Reading) {
 	tok, from := copilotToken(src)
 	if tok == "" {
-		r := fail(Copilot, StateAuthRequired, "no_credentials", fmt.Errorf("%w: no GitHub token in env, github-copilot/apps.json or gh hosts.yml (keyring-stored gh tokens are not readable headlessly; export GH_TOKEN)", ErrNoCredentials))
+		r := ClassifyNoCredentials(Copilot, "no GitHub token in env, github-copilot/apps.json or gh hosts.yml (keyring-stored gh tokens are not readable headlessly; export GH_TOKEN)")
 		return credential{}, &r
 	}
 	return credential{token: tok, account: fingerprint(Copilot, "token:"+tok), extra: map[string]string{"from": from}}, nil
@@ -185,7 +185,7 @@ func parseCopilotUser(u copilotUser) Reading {
 		}
 	}
 	if len(ws) == 0 && len(notes) == 0 {
-		return fail(Copilot, StateError, "schema", errors.New("copilot_internal/user: no quota_snapshots or limited_user_quotas (unrecognized schema)"))
+		return ClassifySchemaError(Copilot, errors.New("copilot_internal/user: no quota_snapshots or limited_user_quotas (unrecognized schema)"))
 	}
 	r := Reading{Windows: ws, Plan: u.CopilotPlan, Message: strings.Join(notes, "; ")}
 	return r
