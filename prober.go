@@ -100,12 +100,12 @@ type credential struct {
 //   - SHOULD set Reading.At to time.Now() when the measurement completes.
 //
 // Error Classification Guide:
-//   - No credentials found → StateAuthRequired (user action required)
-//   - Invalid/expired credentials → StateAuthFailed (user must refresh)
-//   - 429 or Retry-After → StateRateLimited (can retry later)
-//   - Malformed provider response → StateBadResponse (likely provider bug)
-//   - Network/context timeout → StateProbeError (transient, can retry)
-//   - Any panic → StateProbeError (implementation bug)
+//   - No credentials found -> StateAuthRequired (user action required)
+//   - Invalid/expired credentials -> StateAuthFailed (user must refresh)
+//   - 429 or Retry-After -> StateRateLimited (can retry later)
+//   - Malformed provider response -> StateBadResponse (likely provider bug)
+//   - Network/context timeout -> StateProbeError (transient, can retry)
+//   - Any panic -> StateProbeError (implementation bug)
 //
 // Credential Path Convention:
 //   Providers should check these locations in order and return the first valid match:
