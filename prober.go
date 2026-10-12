@@ -77,8 +77,8 @@ type credential struct {
 //     3. Standard config directories (~/.provider_name, $PROVIDER_CONFIG_DIR)
 //   - Returns (credential, nil) on success: credential contains resolved token and account fingerprint.
 //   - Returns (empty_credential, *Reading) on failure:
-//     - StateAuthRequired + ErrNoCredentials: no credential found in any location
-//     - StateBadCredentials + ErrInvalidCredential: credential syntax invalid
+//   - StateAuthRequired + ErrNoCredentials: no credential found in any location
+//   - StateBadCredentials + ErrInvalidCredential: credential syntax invalid
 //   - MUST NOT make network calls.
 //   - MUST NOT modify Prober state.
 //   - Account fingerprint should be deterministic per credential (for deduplication).
@@ -87,11 +87,11 @@ type credential struct {
 //   - Makes authenticated network request to the provider's quota endpoint.
 //   - MUST check context.Done() and respect the deadline from ctx.
 //   - Returns Reading with State and Cause set appropriately:
-//     - StateOK + valid Reading: probe succeeded
-//     - StateRateLimited + *time.Duration hint: provider returned 429/rate-limit-reset
-//     - StateAuthFailed: credential was rejected (401/403); caller must re-identify
-//     - StateBadResponse: provider response was malformed or unexpected
-//     - StateProbeError: network error, timeout, or internal failure
+//   - StateOK + valid Reading: probe succeeded
+//   - StateRateLimited + *time.Duration hint: provider returned 429/rate-limit-reset
+//   - StateAuthFailed: credential was rejected (401/403); caller must re-identify
+//   - StateBadResponse: provider response was malformed or unexpected
+//   - StateProbeError: network error, timeout, or internal failure
 //   - SHOULD honor Retry-After headers and set Reading.RetryAt if available.
 //   - On transient errors (network timeout, 5xx): return StateProbeError, let Prober retry.
 //   - On terminal errors (invalid credential, 4xx): return StateAuthFailed or StateBadResponse.
@@ -108,14 +108,14 @@ type credential struct {
 //   - Any panic -> StateProbeError (implementation bug)
 //
 // Credential Path Convention:
-//   Providers should check these locations in order and return the first valid match:
-//   1. Direct token (src.Credentials parameter)
-//   2. Environment variable (e.g., ANTHROPIC_API_KEY, OPENAI_API_KEY)
-//   3. Home directory config (e.g., ~/.anthropic/config.json)
-//   4. XDG_CONFIG_HOME or platform-specific config paths
-//   - Include a fingerprint in the account field to identify which credential was used
-//     (for deduplication when multiple sources share one account).
 //
+//	Providers should check these locations in order and return the first valid match:
+//	1. Direct token (src.Credentials parameter)
+//	2. Environment variable (e.g., ANTHROPIC_API_KEY, OPENAI_API_KEY)
+//	3. Home directory config (e.g., ~/.anthropic/config.json)
+//	4. XDG_CONFIG_HOME or platform-specific config paths
+//	- Include a fingerprint in the account field to identify which credential was used
+//	  (for deduplication when multiple sources share one account).
 type impl struct {
 	identify func(p *Prober, src Source) (credential, *Reading)
 	fetch    func(ctx context.Context, p *Prober, src Source, c credential) Reading
