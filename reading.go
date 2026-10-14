@@ -37,8 +37,13 @@ const (
 	Muse     Provider = "muse"     // Meta Muse Spark
 )
 
-// Providers lists every provider ccleft knows, in display order.
-var Providers = []Provider{Claude, Codex, Agy, Gemini, Kiro, Copilot, DeepSeek, Muse}
+// Providers lists every provider ccleft knows, derived from registrations.
+// It is populated at package init from providers that call register().
+var Providers []Provider
+
+func init() {
+	Providers = registeredProviders()
+}
 
 // ParseProvider validates a provider name.
 func ParseProvider(s string) (Provider, error) {

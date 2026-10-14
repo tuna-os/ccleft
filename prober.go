@@ -73,6 +73,24 @@ var impls = map[Provider]impl{}
 
 func register(p Provider, i impl) { impls[p] = i }
 
+// registeredProviders returns all currently registered providers in sorted order.
+// This is called at package init to populate the Providers list.
+func registeredProviders() []Provider {
+	var providers []Provider
+	for p := range impls {
+		providers = append(providers, p)
+	}
+	// Sort for deterministic, canonical order
+	for i := 0; i < len(providers)-1; i++ {
+		for j := i + 1; j < len(providers); j++ {
+			if providers[i] > providers[j] {
+				providers[i], providers[j] = providers[j], providers[i]
+			}
+		}
+	}
+	return providers
+}
+
 func (p *Prober) now() time.Time {
 	if p.Now != nil {
 		return p.Now()

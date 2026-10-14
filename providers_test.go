@@ -350,6 +350,21 @@ func TestAgyNonSuccessEnvelope(t *testing.T) {
 	}
 }
 
+// TestProvidersRegistered verifies that all declared provider constants are registered.
+func TestProvidersRegistered(t *testing.T) {
+	// All declared providers should be in the Providers list
+	declaredProviders := []Provider{Claude, Codex, Agy, Gemini, Kiro, Copilot, DeepSeek, Muse}
+	registered := make(map[Provider]bool)
+	for _, p := range Providers {
+		registered[p] = true
+	}
+	for _, p := range declaredProviders {
+		if !registered[p] {
+			t.Errorf("provider %q declared as constant but not registered", p)
+		}
+	}
+}
+
 // ---------------------------------------------------------------- Gemini / Muse
 
 func TestUnsupportedProviders(t *testing.T) {
