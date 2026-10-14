@@ -64,6 +64,70 @@ type credential struct {
 	extra   map[string]string
 }
 
+// ProviderImpl is the interface each provider implementation must satisfy.
+// Providers identify local credentials (no network), then fetch quota from
+// the upstream endpoint or CLI. Implementations must call Prober.finish() to
+// populate shared fields (provider, account, plan, fetchedAt, state).
+//
+// Contract:
+//   - Identify must not make network calls; it resolves local credentials only.
+//   - Identify returns (credential, nil) on success, or (partial, *Reading) on
+//     terminal errors (auth_required, unsupported, no_credentials).
+//   - Fetch makes one upstream probe. It must classify errors into State
+//     (StateOK, StateLimited, StateRateLimited, StateAuthRequired, StateError),
+//     populate Windows and any error into Message, and return a complete Reading.
+//   - Both must handle Source.Credentials override (explicit token/key).
+type ProviderImpl interface {
+	// Name returns the provider's canonical identifier ("claude", "codex", etc).
+	Name() Provider
+	// Identify resolves the account fingerprint from local credentials.
+	// Returns (credential, nil) on success, or (partial, *Reading) on failure.
+	Identify(p *Prober, src Source) (credential, *Reading)
+	// Fetch probes the upstream quota endpoint once with the given credential.
+	// Must return a Reading whose State, Windows, and Message are populated.
+	Fetch(ctx context.Context, p *Prober, src Source, c credential) Reading
+}
+
+// providerRegistry maps provider names to their implementations.
+var providerRegistry = map[Provider]ProviderImpl{}
+
+// RegisterProvider registers a provider implementation. Duplicate registration panics.
+func RegisterProvider(impl ProviderImpl) {
+	p := impl.Name()
+	if _, exists := providerRegistry[p]; exists {
+		panic(fmt.Sprintf("provider %q already registered", p))
+	}
+	providerRegistry[p] = impl
+}
+
+// RegisteredProviders returns all registered providers in canonical order.
+func RegisteredProviders() []Provider {
+	var providers []Provider
+	for p := range providerRegistry {
+		providers = append(providers, p)
+	}
+	// Sort for deterministic order
+	for i := 0; i < len(providers)-1; i++ {
+		for j := i + 1; j < len(providers); j++ {
+			if providers[i] > providers[j] {
+				providers[i], providers[j] = providers[j], providers[i]
+			}
+		}
+	}
+	return providers
+}
+
+// getProvider retrieves a registered provider, returning an error Reading if not found.
+func getProvider(pr Provider) (ProviderImpl, *Reading) {
+	impl, ok := providerRegistry[pr]
+	if !ok {
+		r := fail(pr, StateError, "unknown_provider", fmt.Errorf("unknown provider %q", pr))
+		return nil, &r
+	}
+	return impl, nil
+}
+
+// Deprecated: use ProviderImpl instead. impl is kept for transition.
 type impl struct {
 	identify func(p *Prober, src Source) (credential, *Reading)
 	fetch    func(ctx context.Context, p *Prober, src Source, c credential) Reading
@@ -108,12 +172,21 @@ func (p *Prober) client() *http.Client {
 // only (no network). When no usable credential exists it returns a terminal
 // Reading (auth_required / unsupported) instead.
 func (p *Prober) Identify(src Source) (account string, terminal *Reading) {
-	i, ok := impls[src.Provider]
-	if !ok {
+	// Try new interface first, fall back to old impl pattern
+	prov, r := getProvider(src.Provider)
+	if r != nil {
+		return "", r
+	}
+	var c credential
+	var t *Reading
+	if prov != nil {
+		c, t = prov.Identify(p, src)
+	} else if impl, ok := impls[src.Provider]; ok {
+		c, t = impl.identify(p, src)
+	} else {
 		r := fail(src.Provider, StateError, "unknown_provider", fmt.Errorf("unknown provider %q", src.Provider))
 		return "", &r
 	}
-	c, t := i.identify(p, src)
 	if t != nil {
 		p.finish(t, src, c)
 		return c.account, t
@@ -123,20 +196,36 @@ func (p *Prober) Identify(src Source) (account string, terminal *Reading) {
 
 // Probe measures src once.
 func (p *Prober) Probe(ctx context.Context, src Source) Reading {
-	i, ok := impls[src.Provider]
-	if !ok {
+	// Try new interface first, fall back to old impl pattern
+	prov, r := getProvider(src.Provider)
+	if r != nil {
+		return *r
+	}
+	var c credential
+	var t *Reading
+	if prov != nil {
+		c, t = prov.Identify(p, src)
+	} else if impl, ok := impls[src.Provider]; ok {
+		c, t = impl.identify(p, src)
+	} else {
 		return fail(src.Provider, StateError, "unknown_provider", fmt.Errorf("unknown provider %q", src.Provider))
 	}
-	c, t := i.identify(p, src)
 	if t != nil {
 		p.finish(t, src, c)
 		return *t
 	}
 	ctx, cancel := context.WithTimeout(ctx, p.timeout(src.Provider))
 	defer cancel()
-	r := i.fetch(ctx, p, src, c)
-	p.finish(&r, src, c)
-	return r
+	var r2 Reading
+	if prov != nil {
+		r2 = prov.Fetch(ctx, p, src, c)
+	} else if impl, ok := impls[src.Provider]; ok {
+		r2 = impl.fetch(ctx, p, src, c)
+	} else {
+		r2 = fail(src.Provider, StateError, "unknown_provider", fmt.Errorf("unknown provider %q", src.Provider))
+	}
+	p.finish(&r2, src, c)
+	return r2
 }
 
 func (p *Prober) finish(r *Reading, src Source, c credential) {

@@ -328,7 +328,7 @@ func Merge(srcs []Source, rs []Reading) []Reading {
 		out = append(out, r)
 	}
 	order := map[Provider]int{}
-	for i, p := range Providers {
+	for i, p := range Providers() {
 		order[p] = i
 	}
 	sort.SliceStable(out, func(i, j int) bool {

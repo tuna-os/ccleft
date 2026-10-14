@@ -58,7 +58,7 @@ func (c *common) register(fs *flag.FlagSet) {
 
 func providerList() string {
 	var s []string
-	for _, p := range ccleft.Providers {
+	for _, p := range ccleft.Providers() {
 		s = append(s, string(p))
 	}
 	return strings.Join(s, ",")
