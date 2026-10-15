@@ -248,6 +248,11 @@ volumes:
   error snippets are masked for bearer/`ksk_`/`sk-`/`gh*_` strings.
 - Config files reference secrets by env var or path, never inline.
 
+## Development
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local build/test/lint commands and
+the fixture-based test setup.
+
 ## Phase 2
 
 - Muse device-code (OAuth) login quota; Gemini if Google reopens a quota API.
