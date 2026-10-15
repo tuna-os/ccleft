@@ -7,7 +7,7 @@
 # derived-image options (or mount this image as a Kubernetes image volume
 # into a container that has agy, and run /usr/local/bin/ccleft from there).
 # Cross-compiled on the build platform (no QEMU): linux/amd64 + linux/arm64.
-FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.24 AS build
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27 AS build
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 WORKDIR /src
