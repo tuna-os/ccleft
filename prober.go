@@ -70,8 +70,20 @@ type impl struct {
 }
 
 var impls = map[Provider]impl{}
+var registeredOrder []Provider
 
-func register(p Provider, i impl) { impls[p] = i }
+func register(p Provider, i impl) {
+	impls[p] = i
+	registeredOrder = append(registeredOrder, p)
+}
+
+// orderedProviders returns all registered providers in registration order.
+func orderedProviders() []Provider {
+	// Return a copy to prevent external modification
+	result := make([]Provider, len(registeredOrder))
+	copy(result, registeredOrder)
+	return result
+}
 
 func (p *Prober) now() time.Time {
 	if p.Now != nil {
