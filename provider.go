@@ -4,14 +4,14 @@ import (
 	"context"
 )
 
-// Provider is an interface for quota measurement implementations.
-// Each quota provider (Claude, ChatGPT, Kiro, etc.) implements Provider
+// ProviderImplementation is an interface for quota measurement implementations.
+// Each quota provider (Claude, ChatGPT, Kiro, etc.) implements ProviderImplementation
 // to enable pluggable, testable provider implementations.
 //
 // Implementations should be registered with the Prober during initialization
 // using the internal register() function. This allows new providers to be added
 // without modifying the Prober's core dispatch logic.
-type Provider interface {
+type ProviderImplementation interface {
 	// Name returns the provider identifier (e.g., "claude", "codex").
 	Name() string
 
@@ -35,11 +35,11 @@ type Provider interface {
 // Prober and Client to specific provider implementations.
 type ProviderRegistry interface {
 	// Register associates a provider name with an implementation.
-	Register(name string, provider Provider) error
+	Register(name string, provider ProviderImplementation) error
 
 	// Get retrieves a provider by name, returning nil if not found.
-	Get(name string) Provider
+	Get(name string) ProviderImplementation
 
 	// All returns a map of all registered providers.
-	All() map[string]Provider
+	All() map[string]ProviderImplementation
 }
