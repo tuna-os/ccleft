@@ -222,22 +222,34 @@ func classifyHTTP(pr Provider, resp *http.Response, body []byte, now time.Time) 
 	code := resp.StatusCode
 	err := fmt.Errorf("HTTP %d: %s", code, snippet(body))
 	cause := "http_" + strconv.Itoa(code)
-	switch {
-	case code == http.StatusTooManyRequests:
-		r := fail(pr, StateRateLimited, cause, err)
-		r.retryAfter = ParseRetryAfter(resp.Header.Get("Retry-After"), now)
-		return r
-	case code == http.StatusUnauthorized || code == http.StatusForbidden:
-		return fail(pr, StateAuthRequired, cause, err)
-	case code >= 500:
-		r := fail(pr, StateError, cause, err)
-		if ra := ParseRetryAfter(resp.Header.Get("Retry-After"), now); ra > 0 {
-			r.retryAfter = ra
+
+	// Use centralized error classification for consistency across providers.
+	ec, isRetryable, retryAfterSec := ClassifyHTTPResponse(code, resp.Header)
+
+	// Map error class to Reading state.
+	var st State
+	switch ec {
+	case ErrorAuthentication:
+		st = StateAuthRequired
+	case ErrorNotFound:
+		st = StateUnsupported
+	case ErrorTransient:
+		if code == http.StatusTooManyRequests {
+			st = StateRateLimited
+		} else {
+			st = StateError
 		}
-		return r
 	default:
-		return fail(pr, StateError, cause, err)
+		st = StateError
 	}
+
+	r := fail(pr, st, cause, err)
+
+	if isRetryable && retryAfterSec > 0 {
+		r.retryAfter = time.Duration(retryAfterSec) * time.Second
+	}
+
+	return r
 }
 
 // ParseRetryAfter parses a Retry-After header (delta-seconds or HTTP-date).
