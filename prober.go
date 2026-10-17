@@ -64,9 +64,33 @@ type credential struct {
 	extra   map[string]string
 }
 
+// impl defines the contract for a provider implementation.
+// Each provider (claude.go, codex.go, etc.) registers an impl via register().
+//
+// CONTRACT for identify callback:
+//   - Must discover and validate credentials from local sources only (no network)
+//   - Credential discovery paths are provider-specific (env vars, config files, etc.)
+//   - If credentials exist, return credential struct with account fingerprint
+//   - If credentials don't exist, return nil credential and terminal Reading with StateError/unsupported
+//   - If credentials are invalid/corrupt, return nil credential and terminal Reading with StateError/auth_required
+//   - Should NOT make network requests; use only local file/env inspection
+//
+// CONTRACT for fetch callback:
+//   - Must measure account quota using identified credential
+//   - Receives context with timeout set by Prober.timeout(provider); respect it
+//   - If context times out or is cancelled, return Reading with appropriate state/cause
+//   - Transient errors (network timeouts, rate limits, 5xx): return Reading with StateError/transient cause
+//   - Terminal errors (invalid credential, 401/403, provider not supported): return Reading with StateError/terminal cause
+//   - On success: return Reading with StateOK and populated Windows reflecting quota state
+//   - Should honor Retry-After headers in responses
+//   - Must not panic; all errors become Reading fields
 type impl struct {
+	// identify discovers and validates the account credential from local sources.
+	// Returns (credential, nil) if credential found, or (nil-credential, terminal-Reading) if not found/invalid.
 	identify func(p *Prober, src Source) (credential, *Reading)
-	fetch    func(ctx context.Context, p *Prober, src Source, c credential) Reading
+	// fetch measures the account quota using the provided credential.
+	// Must respect context timeout. Returns Reading describing quota state.
+	fetch func(ctx context.Context, p *Prober, src Source, c credential) Reading
 }
 
 var impls = map[Provider]impl{}
