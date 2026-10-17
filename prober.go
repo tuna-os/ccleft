@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -72,6 +73,27 @@ type impl struct {
 var impls = map[Provider]impl{}
 
 func register(p Provider, i impl) { impls[p] = i }
+
+// RegisteredProviders returns a sorted list of all registered providers.
+// It derives the canonical provider list from actual registrations in prober.go,
+// avoiding the need to manually maintain a duplicate list in reading.go.
+func RegisteredProviders() []Provider {
+	providers := make([]Provider, 0, len(impls))
+	for p := range impls {
+		providers = append(providers, p)
+	}
+	// Sort for deterministic order
+	sort.Slice(providers, func(i, j int) bool {
+		return providers[i] < providers[j]
+	})
+	return providers
+}
+
+func init() {
+	// Initialize Providers from registrations after all provider init blocks have run
+	// This ensures the list stays in sync with what's actually registered
+	Providers = RegisteredProviders()
+}
 
 func (p *Prober) now() time.Time {
 	if p.Now != nil {
