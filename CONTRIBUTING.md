@@ -1,67 +1,101 @@
 # Contributing to ccleft
 
-Thanks for looking at ccleft. This document covers the local dev loop; see
-[README.md](README.md) for what the project does and how it's used.
+Thanks for contributing. This document covers the local development loop; see
+[README.md](README.md) for project behavior and public APIs. Participation is
+governed by the
+[TunaOS Code of Conduct](https://github.com/tuna-os/.github/blob/main/CODE_OF_CONDUCT.md).
 
-## Prerequisites
+## Set up
 
-- Go 1.24 or newer (see `go.mod`)
-- Docker (only needed if you're changing the `Dockerfile` or want to run the
-  `docker` CI job locally)
-- A C compiler (e.g. `gcc`) if you want to run the test suite with `-race`;
-  plain `go test` does not need one
+- Install Go 1.24 or newer (see `go.mod`).
+- Clone the repository and download dependencies with `go mod download`.
+- Install Docker only when changing the `Dockerfile` or running the `docker`
+  CI job locally.
+- Install a C compiler such as `gcc` to run tests with `-race`; plain
+  `go test` does not require one.
 
-## Building
+Build the library and CLI:
 
 ```
 go build ./...
 ```
 
-## Before opening a PR
+## Build and test
 
 Run the same checks CI runs, in this order:
 
 ```
 gofmt -l .                        # must print nothing
 go vet ./...
-go test -race -count=1 ./...      # drop -race if you don't have a C compiler available
+go test -race -count=1 ./...      # drop -race if no C compiler is available
 CGO_ENABLED=0 go build -trimpath -o /dev/null ./cmd/ccleft
 ```
 
-If `gofmt -l .` prints any file paths, run `gofmt -w .` to fix formatting
-before committing.
+If `gofmt -l .` prints any file paths, run `gofmt -w .` before committing.
 
-## Tests and fixtures
+For `Dockerfile` changes, also run `docker build -t ccleft:local .`.
 
-Provider behavior is tested against recorded HTTP fixtures under
-[`testdata/`](testdata/README.md) rather than live upstream calls — see that
-file for what each fixture captures and how it was produced. When adding or
-changing a provider, prefer adding a fixture over hitting the real API in a
-test.
+Provider behavior is tested with `httptest` servers and recorded payloads under
+[`testdata/`](testdata/README.md). Tests must not contact live provider APIs or
+require credentials. `live_test.go` means its fixtures originated from
+live verification; the tests still run offline. When live verification is
+needed, use a read-only account, redact the response before adding it, and
+record its provenance in `testdata/README.md`.
 
-`live_test.go` contains tests pinned to real payloads captured live from
-provider endpoints (see `testdata/README.md` for provenance); they run
-against those recorded fixtures like every other test, not against the live
-network, so no credentials are needed to run them.
+## Add or change a provider
+
+Keep provider-specific credential discovery and response parsing in its own
+file. Follow an existing implementation and complete each part:
+
+1. Add the provider name and public state/window vocabulary in `reading.go`.
+2. Implement and register an `impl` with separate `identify` and `fetch`
+   functions. `identify` reads local credentials without network access;
+   `fetch` performs the bounded upstream request or CLI invocation.
+3. Derive every credential path from `Source.Home` or an explicit source
+   environment override. Never use the process's home implicitly.
+4. Add the provider timeout to `DefaultTimeouts`, and update detection or CLI
+   configuration when automatic discovery applies.
+5. Map the response to normalized `Window` values. Set `Kind`, `Unit`,
+   `Binding`, usage values, and reset time deliberately; use `deriveState`
+   where the standard window rules apply.
+6. Add synthetic or redacted fixtures, `httptest` coverage for successful and
+   failure responses, and update the provider tables in `README.md`.
+
+Use existing error helpers and preserve upstream context:
+
+- `auth_required`: credentials are absent, expired, or rejected.
+- `rate_limited`: the quota endpoint itself throttled the request.
+- `unsupported`: the login or provider has no quota source to query.
+- `error`: network, timeout, schema, or other measurement failure.
+
+Do not turn an unrecognized response into an `ok` reading. Return a stable
+machine-readable cause plus a useful wrapped error, without exposing secrets.
 
 ## Security-sensitive changes
 
-ccleft is read-only by design (see the README's "Security" section): it must
-never write, refresh, or chmod a credential file, and it must never shell out
-to a CLI that could mutate one (`codex`, `claude`). If your change touches
-credential discovery or the `agy` exec path, call this out explicitly in the
-PR description.
+ccleft is read-only by design (see README's Security section). It must never
+write, refresh, or change permissions on credential files, and it must never
+shell out to a CLI that could mutate one (`codex`, `claude`). Call out changes
+to credential discovery or the `agy` execution path in the PR description.
+Fixtures must contain no real tokens, account identifiers, or personal data.
 
-## Docker
+## Submit a pull request
 
-To build the image locally the way CI's `docker` job does:
+1. Branch from `main` using the organization prefixes `fix/`, `feat/`,
+   `chore/`, or `arch/`.
+2. Use Conventional Commit subjects, such as `fix: ...` or `docs: ...`.
+3. Sign off every commit for DCO compliance with `git commit -s`.
+4. Run the checks above and update docs or fixture provenance affected by the
+   change.
+5. Open a focused PR that explains behavior, tests, and any credential or live
+   verification work.
 
-```
-docker build -t ccleft:local .
-```
+A TunaOS maintainer reviews and merges after required CI checks pass and review
+feedback is resolved. This repository is maintained directly rather than as a
+fork; no upstream synchronization step is required. Keep [NOTICE](NOTICE)
+accurate when importing or adapting external work.
 
 ## License
 
-By contributing, you agree your contribution is licensed under Apache-2.0
-(see [LICENSE](LICENSE)). See [NOTICE](NOTICE) for origin and reference
-attributions this project already carries.
+By contributing, you agree that your contribution is licensed under
+Apache-2.0 (see [LICENSE](LICENSE)).
