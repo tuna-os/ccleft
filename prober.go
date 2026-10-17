@@ -72,7 +72,10 @@ type impl struct {
 
 var impls = map[Provider]impl{}
 
-func register(p Provider, i impl) { impls[p] = i }
+func register(p Provider, i impl) {
+	impls[p] = i
+	Providers = RegisteredProviders()
+}
 
 // RegisteredProviders returns a sorted list of all registered providers.
 // It derives the canonical provider list from actual registrations in prober.go,
@@ -87,12 +90,6 @@ func RegisteredProviders() []Provider {
 		return providers[i] < providers[j]
 	})
 	return providers
-}
-
-func init() {
-	// Initialize Providers from registrations after all provider init blocks have run
-	// This ensures the list stays in sync with what's actually registered
-	Providers = RegisteredProviders()
 }
 
 func (p *Prober) now() time.Time {
