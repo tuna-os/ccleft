@@ -39,6 +39,9 @@ type Prober struct {
 	LookPath func(string) (string, error)
 	// Now is the clock (default time.Now).
 	Now func() time.Time
+	// Registry overrides the built-in provider registry for this Prober.
+	// Leave it nil to use the built-in providers.
+	Registry ProviderRegistry
 }
 
 // DefaultProber backs the package-level Probe.
@@ -70,26 +73,69 @@ type impl struct {
 	fetch    func(ctx context.Context, p *Prober, src Source, c credential) Reading
 }
 
-var impls = map[Provider]impl{}
+type providerAdapter struct {
+	name     Provider
+	identify func(p *Prober, src Source) (credential, *Reading)
+	fetch    func(ctx context.Context, p *Prober, src Source, c credential) Reading
+}
+
+func (a providerAdapter) Name() Provider { return a.name }
+
+func (a providerAdapter) Identify(p *Prober, src Source) (ProviderIdentity, *Reading) {
+	c, terminal := a.identify(p, src)
+	return ProviderIdentity{Account: c.account, Plan: c.plan, value: c}, terminal
+}
+
+func (a providerAdapter) Probe(ctx context.Context, p *Prober, src Source, identity ProviderIdentity) Reading {
+	c, ok := identity.value.(credential)
+	if !ok {
+		return fail(src.Provider, StateError, "provider_identity", errors.New("built-in provider received an invalid identity"))
+	}
+	return a.fetch(ctx, p, src, c)
+}
 
 func register(p Provider, i impl) {
-	impls[p] = i
+	provider := providerAdapter{name: p, identify: i.identify, fetch: i.fetch}
+	if err := defaultProviderRegistry.Register(string(p), provider); err != nil {
+		panic(err)
+	}
 	Providers = RegisteredProviders()
 }
 
-// RegisteredProviders returns a sorted list of all registered providers.
-// It derives the canonical provider list from actual registrations in prober.go,
-// avoiding the need to manually maintain a duplicate list in reading.go.
+// RegisteredProviders returns a sorted list of all registered built-in
+// providers. Custom per-Prober registries do not alter the package defaults.
 func RegisteredProviders() []Provider {
-	providers := make([]Provider, 0, len(impls))
-	for p := range impls {
-		providers = append(providers, p)
+	registered := defaultProviderRegistry.All()
+	providers := make([]Provider, 0, len(registered))
+	for name := range registered {
+		providers = append(providers, Provider(name))
 	}
-	// Sort for deterministic order
 	sort.Slice(providers, func(i, j int) bool {
 		return providers[i] < providers[j]
 	})
 	return providers
+}
+
+func (p *Prober) registry() ProviderRegistry {
+	if p.Registry != nil {
+		return p.Registry
+	}
+	return defaultProviderRegistry
+}
+
+// Register adds or replaces a provider for this Prober. The first custom
+// registration copies the built-ins, so adding one provider does not remove
+// the standard providers from a zero-value Prober.
+func (p *Prober) Register(name string, provider ProviderImplementation) error {
+	if p.Registry == nil {
+		p.Registry = NewProviderRegistry()
+		for registeredName, registered := range defaultProviderRegistry.All() {
+			if err := p.Registry.Register(registeredName, registered); err != nil {
+				return err
+			}
+		}
+	}
+	return p.Registry.Register(name, provider)
 }
 
 func (p *Prober) now() time.Time {
@@ -127,44 +173,44 @@ func (p *Prober) client() *http.Client {
 // only (no network). When no usable credential exists it returns a terminal
 // Reading (auth_required / unsupported) instead.
 func (p *Prober) Identify(src Source) (account string, terminal *Reading) {
-	i, ok := impls[src.Provider]
-	if !ok {
+	provider := p.registry().Get(string(src.Provider))
+	if provider == nil {
 		r := fail(src.Provider, StateError, "unknown_provider", fmt.Errorf("unknown provider %q", src.Provider))
 		return "", &r
 	}
-	c, t := i.identify(p, src)
-	if t != nil {
-		p.finish(t, src, c)
-		return c.account, t
+	identity, terminal := provider.Identify(p, src)
+	if terminal != nil {
+		p.finish(terminal, src, identity)
+		return identity.Account, terminal
 	}
-	return c.account, nil
+	return identity.Account, nil
 }
 
 // Probe measures src once.
 func (p *Prober) Probe(ctx context.Context, src Source) Reading {
-	i, ok := impls[src.Provider]
-	if !ok {
+	provider := p.registry().Get(string(src.Provider))
+	if provider == nil {
 		return fail(src.Provider, StateError, "unknown_provider", fmt.Errorf("unknown provider %q", src.Provider))
 	}
-	c, t := i.identify(p, src)
-	if t != nil {
-		p.finish(t, src, c)
-		return *t
+	identity, terminal := provider.Identify(p, src)
+	if terminal != nil {
+		p.finish(terminal, src, identity)
+		return *terminal
 	}
 	ctx, cancel := context.WithTimeout(ctx, p.timeout(src.Provider))
 	defer cancel()
-	r := i.fetch(ctx, p, src, c)
-	p.finish(&r, src, c)
+	r := provider.Probe(ctx, p, src, identity)
+	p.finish(&r, src, identity)
 	return r
 }
 
-func (p *Prober) finish(r *Reading, src Source, c credential) {
+func (p *Prober) finish(r *Reading, src Source, identity ProviderIdentity) {
 	r.Provider = src.Provider
 	if r.Account == "" {
-		r.Account = c.account
+		r.Account = identity.Account
 	}
 	if r.Plan == "" {
-		r.Plan = c.plan
+		r.Plan = identity.Plan
 	}
 	if r.Windows == nil {
 		r.Windows = []Window{}
