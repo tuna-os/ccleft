@@ -119,6 +119,31 @@ _ = ccleft.WritePrometheus(os.Stdout, readings)
 the library never reads the process `$HOME` or environment. `Credentials`
 overrides discovery with a token/key. `Prober` fields override endpoints,
 timeouts, the clock, the agy binary and the exec function (for tests).
+For provider extensions, create a `ProviderImplementation`, register it on a
+`Prober`, and keep the provider-specific credential and response handling in
+that implementation:
+
+```go
+type provider struct{}
+
+func (provider) Name() ccleft.Provider { return "example" }
+func (provider) Identify(*ccleft.Prober, ccleft.Source) (ccleft.ProviderIdentity, *ccleft.Reading) {
+	return ccleft.ProviderIdentity{Account: "stable-account"}, nil
+}
+func (provider) Probe(context.Context, *ccleft.Prober, ccleft.Source, ccleft.ProviderIdentity) ccleft.Reading {
+	return ccleft.Reading{/* normalized quota windows */}
+}
+
+p := &ccleft.Prober{}
+if err := p.Register("example", provider{}); err != nil {
+	panic(err)
+}
+reading := p.Probe(ctx, ccleft.Source{Provider: "example"})
+```
+
+`Register` copies the built-in providers on first use and replaces an existing
+name in that `Prober` only. Use `NewProviderRegistry` and `Prober.Registry` when
+the complete provider set should be supplied explicitly.
 
 `Client` behaviour:
 
