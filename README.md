@@ -124,6 +124,11 @@ For provider extensions, create a `ProviderImplementation`, register it on a
 that implementation:
 
 ```go
+import (
+	"context"
+	"github.com/tuna-os/ccleft"
+)
+
 type provider struct{}
 
 func (provider) Name() ccleft.Provider { return "example" }
