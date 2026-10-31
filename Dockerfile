@@ -8,11 +8,11 @@
 # into a container that has agy, and run /usr/local/bin/ccleft from there).
 # Cross-compiled on the build platform (no QEMU): linux/amd64 + linux/arm64.
 #
-# Base images pinned to specific digests for reproducibility and supply-chain
-# security (tuna-os/ccleft#21). Verify digests with:
-#   docker pull golang:1.27 && docker inspect --format='{{.RepoDigests}}' golang:1.27
-#   docker pull gcr.io/distroless/static-debian12:nonroot && docker inspect --format='{{.RepoDigests}}' gcr.io/distroless/static-debian12:nonroot
-FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27@sha256:7f76e1a27c12d14b1e13e07c8db8bd47dd9e4e6c21c3b4c81e0ce93b3b9b7f9 AS build
+# Base images are pinned to multi-arch index digests for reproducibility and
+# supply-chain security (tuna-os/ccleft#21); Renovate keeps the digests current.
+# Resolve a digest with:
+#   skopeo inspect --raw docker://<image>:<tag> | sha256sum
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27@sha256:2920bb124f1a2e12a1d39f0cab756ae0068441ee1da7655dec7f5e374944095b AS build
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 WORKDIR /src
@@ -24,7 +24,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
       -ldflags="-s -w -X github.com/tuna-os/ccleft.Version=${VERSION}" \
       -o /out/ccleft ./cmd/ccleft
 
-FROM gcr.io/distroless/static-debian12:nonroot@sha256:1b96d8c4b6a1e6d3b0e6f8a7c5c5a5b5c5c5a5c5c5c5a5c5c5c5a5c5c5a5c5c5
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 COPY --from=build /out/ccleft /usr/local/bin/ccleft
 USER nonroot:nonroot
 EXPOSE 9464
