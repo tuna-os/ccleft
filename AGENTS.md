@@ -28,8 +28,9 @@ records code origins and references; there is no upstream-sync workflow.
   unredacted captures. Document fixture provenance in `testdata/README.md`.
 - Treat unknown payloads as measurement errors, not healthy quota. Preserve
   useful upstream error context after redacting secrets.
-- Pin every third-party GitHub Action to a full commit SHA with a release comment.
-  Let Renovate update pinned digests.
+- Reference GitHub Actions by exact release tag (`@v7.0.1`) and run
+  `gh actions-lock` so `.github/workflows/actions.lock` pins each commit SHA.
+  Renovate proposes updates; the `actions-security` check verifies the lockfile.
 
 ## Provider changes
 
