@@ -1,7 +1,7 @@
 // Command ccleft reports REMAINING usage for AI coding-agent accounts.
 //
 //	ccleft probe [--json] [--home DIR ...] [--provider p,...] [--config FILE]
-//	ccleft serve [--addr :9464] [--refresh 5m] [--home DIR ...] [--config FILE]
+//	ccleft serve [--addr 127.0.0.1:9464] [--refresh 5m] [--home DIR ...] [--config FILE]
 //	ccleft version
 package main
 
@@ -150,7 +150,7 @@ func usage(w io.Writer) {
 
 Usage:
   ccleft probe [--json] [--home DIR ...] [--provider p,...] [--config FILE]
-  ccleft serve [--addr :9464] [--refresh 5m] [--home DIR ...] [--config FILE]
+  ccleft serve [--addr 127.0.0.1:9464] [--refresh 5m] [--home DIR ...] [--config FILE]
   ccleft version
 
 Providers: `+providerList()+`
@@ -350,11 +350,27 @@ func (s *server) routes() *http.ServeMux {
 	return mux
 }
 
+// defaultAddr is loopback only: /readings and /metrics have no auth, so
+// listening on other interfaces must be asked for with --addr or addr.
+const defaultAddr = "127.0.0.1:9464"
+
+// serveAddr picks the listen address: the flag, then the config, then
+// defaultAddr.
+func serveAddr(flagAddr string, cfg *Config) string {
+	if flagAddr != "" {
+		return flagAddr
+	}
+	if cfg != nil && cfg.Addr != "" {
+		return cfg.Addr
+	}
+	return defaultAddr
+}
+
 func runServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	var c common
 	c.register(fs)
-	addr := fs.String("addr", "", "listen address (default :9464)")
+	addr := fs.String("addr", "", "listen address (default "+defaultAddr+"; use :9464 for all interfaces)")
 	refresh := fs.Duration("refresh", 0, "refresh interval (default 5m)")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -363,12 +379,7 @@ func runServe(args []string) error {
 	if err != nil {
 		return err
 	}
-	if *addr == "" {
-		*addr = ":9464"
-		if cfg != nil && cfg.Addr != "" {
-			*addr = cfg.Addr
-		}
-	}
+	*addr = serveAddr(*addr, cfg)
 	if *refresh == 0 {
 		*refresh = 5 * time.Minute
 		if cfg != nil && cfg.Refresh > 0 {

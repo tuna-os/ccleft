@@ -1,5 +1,7 @@
 # ccleft serve --config ccleft.yaml
-addr: ":9464"
+# Default: loopback only. The API has no auth. Use ":9464" to listen on all
+# interfaces (e.g. in a container behind a Service or NetworkPolicy).
+addr: "127.0.0.1:9464"
 refresh: 5m
 
 # Probe API-key providers (KIRO_API_KEY, DEEPSEEK_API_KEY, META_API_KEY,

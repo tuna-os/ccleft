@@ -13,7 +13,7 @@ import (
 
 // Config is the YAML file accepted by --config.
 //
-//	addr: ":9464"
+//	addr: "127.0.0.1:9464"   # default; ":9464" listens on all interfaces
 //	refresh: 5m
 //	env_providers: true        # probe KIRO_API_KEY / DEEPSEEK_API_KEY / ... from ccleft's env
 //	homes:

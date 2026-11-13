@@ -104,6 +104,21 @@ sources:
 	}
 }
 
+func TestServeAddrDefault(t *testing.T) {
+	if got := serveAddr("", nil); got != "127.0.0.1:9464" {
+		t.Fatalf("default addr = %q, want loopback", got)
+	}
+	if got := serveAddr("", &Config{}); got != "127.0.0.1:9464" {
+		t.Fatalf("empty config addr = %q, want loopback", got)
+	}
+	if got := serveAddr("", &Config{Addr: ":9464"}); got != ":9464" {
+		t.Fatalf("config addr = %q", got)
+	}
+	if got := serveAddr(":9000", &Config{Addr: ":9464"}); got != ":9000" {
+		t.Fatalf("flag addr = %q, want flag to win", got)
+	}
+}
+
 func TestServeRoutes(t *testing.T) {
 	s := &server{client: ccleft.NewClient(nil)}
 	h := s.routes()

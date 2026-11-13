@@ -172,7 +172,7 @@ the complete provider set should be supplied explicitly.
 
 ```
 ccleft probe [--json] [--home DIR ...] [--provider p,...] [--config FILE] [--no-env]
-ccleft serve [--addr :9464] [--refresh 5m] [--home DIR ...] [--config FILE]
+ccleft serve [--addr 127.0.0.1:9464] [--refresh 5m] [--home DIR ...] [--config FILE]
 ```
 
 - No `--home`: probes `$HOME` (CLI convenience only).
@@ -184,6 +184,9 @@ ccleft serve [--addr :9464] [--refresh 5m] [--home DIR ...] [--config FILE]
 - `--endpoint provider=URL` points a provider at a mock or regional endpoint.
 - `serve` exposes `GET /readings` (JSON, `?provider=` filter), `GET /metrics`
   and `GET /healthz`, re-detecting sources every refresh.
+- `serve` listens on `127.0.0.1:9464` by default. These endpoints have no
+  auth, so other hosts can not reach them unless you set `--addr :9464` (or
+  `addr` in the config file). The container image sets `--addr :9464`.
 
 Config file: see [`ccleft.example.yaml`](ccleft.example.yaml). Secrets are
 referenced by env var name (`credentials_env`) or file (`credentials_file`),
@@ -216,7 +219,7 @@ read-only:
 ```yaml
 - name: ccleft
   image: ghcr.io/tuna-os/ccleft:latest
-  args: [serve, --config, /etc/ccleft/ccleft.yaml]
+  args: [serve, --addr, ":9464", --config, /etc/ccleft/ccleft.yaml]
   ports: [{containerPort: 9464, name: metrics}]
   volumeMounts:
     - {name: data, mountPath: /data/home, readOnly: true}
@@ -252,7 +255,7 @@ no copy step):
 containers:
   - name: ccleft
     image: <agent image that has agy>
-    command: [/opt/ccleft/usr/local/bin/ccleft, serve, --config, /etc/ccleft/ccleft.yaml]
+    command: [/opt/ccleft/usr/local/bin/ccleft, serve, --addr, ":9464", --config, /etc/ccleft/ccleft.yaml]
     volumeMounts: [{name: ccleft-bin, mountPath: /opt/ccleft}]
 volumes:
   - name: ccleft-bin
