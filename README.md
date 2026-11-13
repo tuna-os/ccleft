@@ -218,7 +218,7 @@ read-only:
 
 ```yaml
 - name: ccleft
-  image: ghcr.io/tuna-os/ccleft:latest
+  image: ghcr.io/tuna-os/ccleft:main
   args: [serve, --addr, ":9464", --config, /etc/ccleft/ccleft.yaml]
   ports: [{containerPort: 9464, name: metrics}]
   volumeMounts:
@@ -228,6 +228,10 @@ read-only:
     - name: KIRO_API_KEY
       valueFrom: {secretKeyRef: {name: kiro, key: api-key}}
 ```
+
+Images are published as `main` and `sha-<short>` on every push to `main`;
+`latest` and version tags exist only once a `v*` release is tagged. For a
+deployment, pin the digest printed in the `publish` job summary.
 
 Because accounts are deduped and rate-limited inside one process, prefer
 **one** ccleft per account pool over one per agent: the Claude endpoint 429s
