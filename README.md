@@ -297,6 +297,10 @@ volumes:
   truncated, domain-separated SHA-256 fingerprint, never a token; upstream
   error snippets are masked for bearer/`ksk_`/`sk-`/`gh*_` strings.
 - Config files reference secrets by env var or path, never inline.
+- Files in an agent home are untrusted input: the agent writes them. ccleft
+  reads only regular files of at most 32 MiB there. A FIFO, a device or a
+  larger file is reported as `no_credentials` for that home, and the other
+  homes are still probed.
 
 ## Development
 
