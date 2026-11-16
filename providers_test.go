@@ -94,6 +94,28 @@ func TestClaudeRateLimitedHonoursRetryAfter(t *testing.T) {
 	}
 }
 
+// A Retry-After given as an HTTP-date is honoured like delta-seconds.
+func TestClaudeRateLimitedHonoursRetryAfterDate(t *testing.T) {
+	u := newUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", testNow.Add(90*time.Second).Format(http.TimeFormat))
+		serveJSON(429, fixture(t, "claude_rate_limited.json"))(w, r)
+	})
+	r := testProber(Claude, u, nil).Probe(context.Background(), Source{Provider: Claude, Home: claudeHome(t, "a")})
+	if r.State != StateRateLimited || r.RetryAt == nil || !r.RetryAt.Equal(testNow.Add(90*time.Second)) {
+		t.Fatalf("got %s RetryAt=%v", r.State, r.RetryAt)
+	}
+}
+
+// A 404 from a quota endpoint is a transient measurement error, not proof
+// that the login has no quota source; only copilot maps its 404 itself.
+func TestClaudeNotFoundIsError(t *testing.T) {
+	u := newUpstream(t, serveJSON(404, []byte(`{"error":"not found"}`)))
+	r := testProber(Claude, u, nil).Probe(context.Background(), Source{Provider: Claude, Home: claudeHome(t, "a")})
+	if r.State != StateError || r.Cause != "http_404" || !r.Transient() {
+		t.Fatalf("got %s/%s transient=%v", r.State, r.Cause, r.Transient())
+	}
+}
+
 func TestClaudeExpiredTokenNoNetwork(t *testing.T) {
 	u := newUpstream(t, serveJSON(200, fixture(t, "claude_usage.json")))
 	home := t.TempDir()

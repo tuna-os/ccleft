@@ -267,15 +267,15 @@ func classifyHTTP(pr Provider, resp *http.Response, body []byte, now time.Time) 
 	cause := "http_" + strconv.Itoa(code)
 
 	// Use centralized error classification for consistency across providers.
-	ec, isRetryable, retryAfterSec := ClassifyHTTPResponse(code, resp.Header)
+	ec, isRetryable, _ := ClassifyHTTPResponse(code, resp.Header)
 
-	// Map error class to Reading state.
+	// Map error class to Reading state. A 404 stays an error here: only a
+	// provider that knows what its 404 means may report it as unsupported
+	// (copilot's no_copilot).
 	var st State
 	switch ec {
 	case ErrorAuthentication:
 		st = StateAuthRequired
-	case ErrorNotFound:
-		st = StateUnsupported
 	case ErrorTransient:
 		if code == http.StatusTooManyRequests {
 			st = StateRateLimited
@@ -288,8 +288,10 @@ func classifyHTTP(pr Provider, resp *http.Response, body []byte, now time.Time) 
 
 	r := fail(pr, st, cause, err)
 
-	if isRetryable && retryAfterSec > 0 {
-		r.retryAfter = time.Duration(retryAfterSec) * time.Second
+	// ParseRetryAfter also reads the HTTP-date form, which ClassifyHTTPResponse
+	// ignores.
+	if isRetryable {
+		r.retryAfter = ParseRetryAfter(resp.Header.Get("Retry-After"), now)
 	}
 
 	return r
