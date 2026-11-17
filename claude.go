@@ -100,7 +100,7 @@ func claudeAccount(src Source, dir string, cf claudeCreds) string {
 		candidates = append([]string{src.path(".claude.json")}, candidates...)
 	}
 	for _, c := range candidates {
-		if err := readJSON(c, &cj); err == nil && cj.OAuthAccount != nil && cj.OAuthAccount.AccountUUID != "" {
+		if err := readJSONMax(c, maxStateFile, &cj); err == nil && cj.OAuthAccount != nil && cj.OAuthAccount.AccountUUID != "" {
 			return fingerprint(Claude, "acct:"+cj.OAuthAccount.AccountUUID+"/"+cj.OAuthAccount.OrganizationUUID)
 		}
 	}

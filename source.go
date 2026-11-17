@@ -56,7 +56,11 @@ func fingerprint(p Provider, identity string) string {
 }
 
 func readJSON(path string, v any) error {
-	b, err := readFile(path)
+	return readJSONMax(path, maxCredentialFile, v)
+}
+
+func readJSONMax(path string, max int64, v any) error {
+	b, err := readFileMax(path, max)
 	if err != nil {
 		return err
 	}
@@ -72,9 +76,16 @@ func fileExists(p string) bool {
 }
 
 // maxCredentialFile is the most readFile takes from one file. Token files are
-// a few kilobytes; .claude.json also carries per-project state and reaches
-// megabytes.
-const maxCredentialFile = 32 << 20
+// a few kilobytes. The limit is on the bytes read, but what it protects is the
+// memory the parser needs: decoding into a map, or any YAML, takes 40 to 70
+// times the size of a file made of many small values, so a larger limit lets
+// one home use gigabytes.
+const maxCredentialFile = 1 << 20
+
+// maxStateFile is the limit for .claude.json, which also carries per-project
+// state and reaches megabytes. It is only ever decoded into a struct of known
+// fields, which takes no more memory than the file.
+const maxStateFile = 32 << 20
 
 // readFile reads a credential file from an agent home. The home is written by
 // the agent, not by ccleft, so the file is untrusted: a FIFO there would block
@@ -82,6 +93,10 @@ const maxCredentialFile = 32 << 20
 // runs out. Either would stop every other account's probe with it, so only a
 // regular file of at most maxCredentialFile bytes is read.
 func readFile(path string) ([]byte, error) {
+	return readFileMax(path, maxCredentialFile)
+}
+
+func readFileMax(path string, max int64) ([]byte, error) {
 	// O_NONBLOCK makes opening a FIFO return at once; it does not change how
 	// a regular file is read.
 	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
@@ -98,16 +113,16 @@ func readFile(path string) ([]byte, error) {
 	if !st.Mode().IsRegular() {
 		return nil, fmt.Errorf("%s: not a regular file", path)
 	}
-	if st.Size() > maxCredentialFile {
-		return nil, fmt.Errorf("%s: larger than %d bytes", path, maxCredentialFile)
+	if st.Size() > max {
+		return nil, fmt.Errorf("%s: larger than %d bytes", path, max)
 	}
 	// The limit also covers a file that grows after the size check.
-	b, err := io.ReadAll(io.LimitReader(f, maxCredentialFile+1))
+	b, err := io.ReadAll(io.LimitReader(f, max+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(b) > maxCredentialFile {
-		return nil, fmt.Errorf("%s: larger than %d bytes", path, maxCredentialFile)
+	if int64(len(b)) > max {
+		return nil, fmt.Errorf("%s: larger than %d bytes", path, max)
 	}
 	return b, nil
 }
