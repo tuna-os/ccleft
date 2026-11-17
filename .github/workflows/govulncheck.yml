@@ -1,0 +1,36 @@
+name: govulncheck
+
+# Known-vulnerability scan of the code that ships in the image. It runs in the
+# golang image the Dockerfile builds with, so a pinned digest that falls behind
+# a Go security release fails here. The weekly run catches advisories
+# published after the last merge.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Scan with the toolchain the image is built with
+        run: |
+          image="$(sed -n 's/^FROM --platform=\$BUILDPLATFORM \(docker\.io\/library\/golang:[^ ]*\) AS build$/\1/p' Dockerfile)"
+          test -n "$image"
+          docker run --rm -e GOFLAGS=-buildvcs=false -v "$PWD:/src" -w /src "$image" \
+            sh -c 'go install golang.org/x/vuln/cmd/govulncheck@v1.9.0 && govulncheck ./...'

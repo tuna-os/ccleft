@@ -12,6 +12,8 @@ workflows:
         - 'actions/upload-artifact@v7.0.2'
         - 'docker/build-push-action@v7.4.0'
         - 'docker/setup-buildx-action@v4.4.1'
+    '.github/workflows/govulncheck.yml':
+        - 'actions/checkout@v7.0.1'
     '.github/workflows/publish.yml':
         - 'actions/checkout@v7.0.1'
         - 'docker/build-push-action@v7.4.0'
