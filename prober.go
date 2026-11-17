@@ -173,17 +173,29 @@ func (p *Prober) client() *http.Client {
 // only (no network). When no usable credential exists it returns a terminal
 // Reading (auth_required / unsupported) instead.
 func (p *Prober) Identify(src Source) (account string, terminal *Reading) {
+	account, _, terminal = p.identify(src)
+	return account, terminal
+}
+
+// identify is Identify plus a fingerprint of the credential itself. Homes
+// that resolve to one account do not always hold the same token, and a
+// provider refusing one token says nothing about the others, so the Client
+// has to tell them apart. cred is empty when the provider exposes no token (a
+// custom implementation).
+func (p *Prober) identify(src Source) (account, cred string, terminal *Reading) {
 	provider := p.registry().Get(string(src.Provider))
 	if provider == nil {
 		r := fail(src.Provider, StateError, "unknown_provider", fmt.Errorf("unknown provider %q", src.Provider))
-		return "", &r
+		return "", "", &r
 	}
 	identity, terminal := provider.Identify(p, src)
+	if c, ok := identity.value.(credential); ok && c.token != "" {
+		cred = fingerprint(src.Provider, "credential:"+c.token)
+	}
 	if terminal != nil {
 		p.finish(terminal, src, identity)
-		return identity.Account, terminal
 	}
-	return identity.Account, nil
+	return identity.Account, cred, terminal
 }
 
 // Probe measures src once.
@@ -235,6 +247,18 @@ func (p *Prober) httpJSON(ctx context.Context, pr Provider, req *http.Request, o
 		req.Header.Set("User-Agent", "ccleft/"+Version)
 	}
 	req.Header.Set("Accept", "application/json")
+	// Tokens come from files the agent writes. One that cannot be sent would
+	// fail in the transport or as a 4xx about the request, and both read as
+	// trouble with the endpoint, which every home of the account then shares.
+	// It is a bad credential: say so before sending anything.
+	for name, vs := range req.Header {
+		for _, v := range vs {
+			if !sendableHeaderValue(v) {
+				r := fail(pr, StateAuthRequired, "invalid_credentials", fmt.Errorf("the %s value cannot be sent: it has a control character or is over %d bytes", name, maxHeaderValue))
+				return &r
+			}
+		}
+	}
 	resp, err := p.client().Do(req)
 	if err != nil {
 		cause := "network"
@@ -259,6 +283,24 @@ func (p *Prober) httpJSON(ctx context.Context, pr Provider, req *http.Request, o
 		return &r
 	}
 	return nil
+}
+
+// maxHeaderValue is far above any real token (a few kilobytes for a JWT) and
+// below what servers accept for one header.
+const maxHeaderValue = 16 << 10
+
+// sendableHeaderValue reports whether v is a header value net/http will send
+// and a server will take: no control characters except tab, and not huge.
+func sendableHeaderValue(v string) bool {
+	if len(v) > maxHeaderValue {
+		return false
+	}
+	for i := 0; i < len(v); i++ {
+		if b := v[i]; (b < ' ' && b != '\t') || b == 0x7f {
+			return false
+		}
+	}
+	return true
 }
 
 func classifyHTTP(pr Provider, resp *http.Response, body []byte, now time.Time) Reading {

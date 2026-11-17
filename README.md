@@ -156,6 +156,11 @@ the complete provider set should be supplied explicitly.
   local files *before* any network call, so N homes sharing one account make
   one upstream call; `GetAll` merges them into one reading with all `homes`.
 - **Single-flight** — concurrent `Get`s for one account share one request.
+- **Auth failures stay with the credential** — homes of one account can hold
+  different tokens. When the provider refuses one (`auth_required`), that
+  answer is cached for that token only: a home with another token is still
+  measured, and `GetAll` keeps the measurement over the failure. An account
+  reads `auth_required` only when no home of it can be measured.
 - **Per-account rate limit** — at most one upstream call per `MinInterval`
   (claude 3 m, agy 2 m, others 1 m by default); callers in between get the cache.
   The gate opens 5% (≤ 30 s) early, so a caller that polls at exactly
@@ -293,6 +298,12 @@ volumes:
   explicit env. A test snapshots the home tree before/after probing.
 - Expired tokens are reported (`token_expired`, transient) instead of being
   refreshed, so ccleft cannot race a running agent's own refresh.
+- Which account a home belongs to is read from that home's own files and is
+  not confirmed by the provider. A home that names another account without a
+  working token cannot change that account's reading. A home that names
+  another account and holds a working token for a different one can: its
+  quota is then reported under the name it gave. Use one ccleft per group of
+  homes that trust each other where that matters.
 - Tokens are sent only to their own provider's endpoint. Outputs contain a
   truncated, domain-separated SHA-256 fingerprint, never a token; upstream
   error snippets are masked for bearer/`ksk_`/`sk-`/`gh*_` strings.

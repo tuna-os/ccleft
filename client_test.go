@@ -264,3 +264,148 @@ func TestDetect(t *testing.T) {
 		t.Fatalf("env detect %+v", env)
 	}
 }
+
+// Homes of one account can hold different tokens, and the account identity is
+// read from each home's own files. A home whose login is gone must not turn
+// the account into auth_required for the homes that can still be measured.
+func TestDeadLoginInOneHomeDoesNotHideTheAccount(t *testing.T) {
+	u := newUpstream(t, serveJSON(200, fixture(t, "claude_usage.json")))
+	c := NewClient(testProber(Claude, u, nil))
+	dead, live := claudeHome(t, "same"), claudeHome(t, "same")
+	// Claude Code zeroes the token when a refresh fails; .claude.json still
+	// names the account.
+	writeFile(t, filepath.Join(dead, ".claude", ".credentials.json"), map[string]any{"claudeAiOauth": map[string]any{}})
+	rs := c.GetAll(context.Background(), []Source{{Provider: Claude, Home: dead}, {Provider: Claude, Home: live}})
+	if len(rs) != 1 {
+		t.Fatalf("readings = %d, want 1 for the shared account: %+v", len(rs), rs)
+	}
+	if r := rs[0]; r.State != StateOK || len(r.Windows) == 0 || len(r.Homes) != 2 {
+		t.Fatalf("account reads %s (%s) with %d windows for homes %v; the first home's dead login replaced the measurement", r.State, r.Cause, len(r.Windows), r.Homes)
+	}
+}
+
+func TestRefusedTokenIsNotCachedForOtherHomes(t *testing.T) {
+	usage := fixture(t, "claude_usage.json")
+	u := newUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "Bearer junk" {
+			serveJSON(401, []byte(`{"error":"invalid token"}`))(w, r)
+			return
+		}
+		serveJSON(200, usage)(w, r)
+	})
+	c := NewClient(testProber(Claude, u, nil))
+	junk, live := claudeHome(t, "same"), claudeHome(t, "same")
+	writeFile(t, filepath.Join(junk, ".claude", ".credentials.json"), map[string]any{
+		"claudeAiOauth": map[string]any{"accessToken": "junk", "refreshToken": "junk"},
+	})
+	ctx := context.Background()
+	if r := c.Get(ctx, Source{Provider: Claude, Home: junk}); r.State != StateAuthRequired {
+		t.Fatalf("junk token: state %s, want auth_required", r.State)
+	}
+	if r := c.Get(ctx, Source{Provider: Claude, Home: live}); r.State != StateOK {
+		t.Fatalf("the home with a working token was answered %s (%s) from the other home's refusal", r.State, r.Cause)
+	}
+	if n := u.calls.Load(); n != 2 {
+		t.Fatalf("upstream calls = %d, want 2 (one per token)", n)
+	}
+	// The refused token is not tried again inside the interval.
+	if r := c.Get(ctx, Source{Provider: Claude, Home: junk}); r.State != StateAuthRequired {
+		t.Fatalf("junk token again: state %s, want the cached auth_required", r.State)
+	}
+	if n := u.calls.Load(); n != 2 {
+		t.Fatalf("upstream calls = %d, want 2: the refused token was retried inside the interval", n)
+	}
+	rs := c.GetAll(ctx, []Source{{Provider: Claude, Home: junk}, {Provider: Claude, Home: live}})
+	if len(rs) != 1 || rs[0].State != StateOK || len(rs[0].Homes) != 2 {
+		t.Fatalf("merged = %+v, want one ok reading for both homes", rs)
+	}
+}
+
+// Both homes ask at once: the one with the working token waits for the other
+// home's call, and must not take its refusal as the answer.
+func TestRefusedTokenInFlightIsNotSharedWithOtherHomes(t *testing.T) {
+	usage := fixture(t, "claude_usage.json")
+	release := make(chan struct{})
+	u := newUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "Bearer junk" {
+			<-release
+			serveJSON(401, []byte(`{"error":"invalid token"}`))(w, r)
+			return
+		}
+		serveJSON(200, usage)(w, r)
+	})
+	c := NewClient(testProber(Claude, u, nil))
+	junk, live := claudeHome(t, "same"), claudeHome(t, "same")
+	writeFile(t, filepath.Join(junk, ".claude", ".credentials.json"), map[string]any{
+		"claudeAiOauth": map[string]any{"accessToken": "junk", "refreshToken": "junk"},
+	})
+	ctx := context.Background()
+	first := make(chan Reading, 1)
+	go func() { first <- c.Get(ctx, Source{Provider: Claude, Home: junk}) }()
+	for u.calls.Load() == 0 { // the junk call is in flight
+		time.Sleep(time.Millisecond)
+	}
+	second := make(chan Reading, 1)
+	go func() { second <- c.Get(ctx, Source{Provider: Claude, Home: live}) }()
+	time.Sleep(20 * time.Millisecond) // let it reach the in-flight call
+	close(release)
+	if r := <-first; r.State != StateAuthRequired {
+		t.Fatalf("junk token: state %s, want auth_required", r.State)
+	}
+	if r := <-second; r.State != StateOK {
+		t.Fatalf("the home with a working token was answered %s (%s) from the other home's in-flight refusal", r.State, r.Cause)
+	}
+}
+
+// agy has no token to send: it runs with the home, so the token file is the
+// credential.
+func TestAgyLoginPromptInOneHomeIsNotCachedForOtherHomes(t *testing.T) {
+	stale := agyTokenHome(t, func(m map[string]any) { m["token"] = map[string]any{"refresh_token": "1//revoked"} })
+	live := agyTokenHome(t, nil)
+	p := &Prober{
+		LookPath: func(string) (string, error) { return "/usr/local/bin/agy", nil },
+		Exec: func(ctx context.Context, env []string, name string, args ...string) ([]byte, error) {
+			if strings.Contains(strings.Join(env, "\n"), "HOME="+stale+"\n") {
+				return []byte("Please sign in to continue"), nil
+			}
+			return fixture(t, "agy_usage_1.2.10.json"), nil
+		},
+	}
+	c := NewClient(p)
+	ctx := context.Background()
+	a, b := c.Get(ctx, Source{Provider: Agy, Home: stale}), c.Get(ctx, Source{Provider: Agy, Home: live})
+	if a.Account != b.Account {
+		t.Fatalf("accounts %q and %q: the homes must share one Google account for this test", a.Account, b.Account)
+	}
+	if a.State != StateAuthRequired || !b.State.HasQuota() {
+		t.Fatalf("states = %s, %s; want auth_required for the home agy asks to log in and a measurement for the other", a.State, b.State)
+	}
+}
+
+// A token that cannot be sent at all never reaches the provider, so it would
+// read as a network error, which is shared by every home of the account and
+// backed off. It is a bad credential like any other.
+func TestUnsendableTokenIsABadCredentialNotAnEndpointError(t *testing.T) {
+	u := newUpstream(t, serveJSON(200, fixture(t, "claude_usage.json")))
+	c := NewClient(testProber(Claude, u, nil))
+	ctx := context.Background()
+	for name, token := range map[string]string{
+		"line break": "junk\r\nX-Injected: 1",
+		"oversized":  strings.Repeat("a", maxHeaderValue),
+	} {
+		bad, live := claudeHome(t, name), claudeHome(t, name)
+		writeFile(t, filepath.Join(bad, ".claude", ".credentials.json"), map[string]any{
+			"claudeAiOauth": map[string]any{"accessToken": token, "refreshToken": "junk"},
+		})
+		before := u.calls.Load()
+		if r := c.Get(ctx, Source{Provider: Claude, Home: bad}); r.State != StateAuthRequired || r.Cause != "invalid_credentials" {
+			t.Fatalf("%s token: got %s/%s, want auth_required/invalid_credentials", name, r.State, r.Cause)
+		}
+		if n := u.calls.Load() - before; n != 0 {
+			t.Fatalf("%s token: %d request(s) were sent with it", name, n)
+		}
+		if r := c.Get(ctx, Source{Provider: Claude, Home: live}); r.State != StateOK {
+			t.Fatalf("%s token: the home with a working token was answered %s (%s)", name, r.State, r.Cause)
+		}
+	}
+}

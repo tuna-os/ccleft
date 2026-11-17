@@ -39,6 +39,11 @@ func agyIdentify(p *Prober, src Source) (credential, *Reading) {
 		return credential{}, &r
 	}
 	c := credential{account: agyAccount(tok, src.Home)}
+	// agy reads the token file itself, so the file's content is what tells
+	// two homes of one Google account apart.
+	if b, err := readFile(tok); err == nil {
+		c.token = string(b)
+	}
 	return c, nil
 }
 

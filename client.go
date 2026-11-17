@@ -87,6 +87,18 @@ type entry struct {
 	// nextAllowed comes from MinInterval (see minIntervalSlack); zero after a
 	// failure, so backoff and Retry-After are honoured exactly.
 	slack time.Duration
+	// rejected holds the credentials the provider refused. A refusal belongs
+	// to one credential, not to the account: the account identity is read
+	// from each home's own files, so a home with a dead or made-up token
+	// must not decide what the other homes of that account are told.
+	rejected map[string]rejection
+}
+
+// rejection is one refused credential: the failure, and the time until which
+// it is answered from here instead of asking the provider again.
+type rejection struct {
+	r     Reading
+	until time.Time
 }
 
 // minIntervalSlack is how early a call may pass the MinInterval gate: 5% of
@@ -106,6 +118,7 @@ func minIntervalSlack(d time.Duration) time.Duration {
 type call struct {
 	done chan struct{}
 	r    Reading
+	cred string
 }
 
 // NewClient returns a Client using p (DefaultProber when nil).
@@ -156,7 +169,7 @@ func (c *Client) backoff(failures int, retryAfter time.Duration) time.Duration {
 // account's rate limit / backoff allows it.
 func (c *Client) Get(ctx context.Context, src Source) Reading {
 	p := c.prober()
-	acct, terminal := p.Identify(src)
+	acct, cred, terminal := p.identify(src)
 	key := string(src.Provider) + "/" + acct
 	if terminal != nil {
 		// Answered from local files (no credential, unsupported login):
@@ -178,24 +191,40 @@ func (c *Client) Get(ctx context.Context, src Source) Reading {
 		c.entries = map[string]*entry{}
 		c.calls = map[string]*call{}
 	}
-	if e := c.entries[key]; e != nil && p.now().Add(e.slack).Before(e.nextAllowed) {
-		r := c.cached(e)
-		c.mu.Unlock()
-		return r
-	}
-	if cl, ok := c.calls[key]; ok {
+	var cl *call
+	for cl == nil {
+		if e := c.entries[key]; e != nil {
+			if rj, ok := e.rejected[cred]; ok && p.now().Before(rj.until) {
+				c.mu.Unlock()
+				return cloneReading(rj.r)
+			}
+			if p.now().Add(e.slack).Before(e.nextAllowed) {
+				r := c.cached(e)
+				c.mu.Unlock()
+				return r
+			}
+		}
+		inflight, ok := c.calls[key]
+		if !ok {
+			cl = &call{done: make(chan struct{}), cred: cred}
+			c.calls[key] = cl
+			continue
+		}
 		c.mu.Unlock()
 		select {
-		case <-cl.done:
-			return cloneReading(cl.r)
+		case <-inflight.done:
 		case <-ctx.Done():
 			r := fail(src.Provider, StateError, "timeout", fmt.Errorf("waiting for in-flight probe: %w", ctx.Err()))
 			r.Account = acct
 			return r
 		}
+		if !refusedOther(inflight.r, inflight.cred, cred) {
+			return cloneReading(inflight.r)
+		}
+		// The provider refused that home's credential, not this one: go
+		// round again and measure with this one.
+		c.mu.Lock()
 	}
-	cl := &call{done: make(chan struct{})}
-	c.calls[key] = cl
 	c.mu.Unlock()
 
 	start := p.now()
@@ -212,7 +241,25 @@ func (c *Client) Get(ctx context.Context, src Source) Reading {
 		e = &entry{}
 		c.entries[key] = e
 	}
-	out := c.record(e, r, src.Provider, p.now())
+	now := p.now()
+	for k, rj := range e.rejected {
+		if !now.Before(rj.until) {
+			delete(e.rejected, k)
+		}
+	}
+	var out Reading
+	if r.State == StateAuthRequired && cred != "" {
+		// Kept against the credential and out of e.last, which the other
+		// homes of this account are served from.
+		if e.rejected == nil {
+			e.rejected = map[string]rejection{}
+		}
+		e.rejected[cred] = rejection{r: r, until: now.Add(c.minInterval(src.Provider))}
+		out = r
+	} else {
+		delete(e.rejected, cred)
+		out = c.record(e, r, src.Provider, now)
+	}
 	cl.r = out
 	delete(c.calls, key)
 	c.mu.Unlock()
@@ -225,6 +272,12 @@ func (c *Client) Get(ctx context.Context, src Source) Reading {
 		c.OnUpstream(src, lr, took)
 	}
 	return cloneReading(out)
+}
+
+// refusedOther reports whether r is a provider refusing a credential other
+// than cred. Unknown credentials (custom providers) count as the same one.
+func refusedOther(r Reading, by, cred string) bool {
+	return r.State == StateAuthRequired && by != "" && cred != "" && by != cred
 }
 
 // record stores a fresh probe result and returns what the caller should see.
@@ -289,6 +342,8 @@ func cloneReading(r Reading) Reading {
 // GetAll probes every source concurrently (bounded) and returns one Reading
 // per distinct (provider, account): homes sharing an account are merged
 // into that reading's Homes. Sources with no credential stay separate.
+// When the homes of one account disagree, the reading that says most about
+// the account is kept (see Merge).
 func (c *Client) GetAll(ctx context.Context, srcs []Source) []Reading {
 	res := make([]Reading, len(srcs))
 	sem := make(chan struct{}, 8)
@@ -308,6 +363,12 @@ func (c *Client) GetAll(ctx context.Context, srcs []Source) []Reading {
 
 // Merge collapses readings by (provider, account), recording each source's
 // home (or label) in Homes. srcs[i] produced rs[i].
+//
+// Homes of one account can hold different credentials, so their readings can
+// differ. The one kept is the one that says most about the account: a
+// measurement before a failure, and any other failure before auth_required,
+// which only says that one home's credential does not work. Among equals the
+// first source wins.
 func Merge(srcs []Source, rs []Reading) []Reading {
 	idx := map[string]int{}
 	var out []Reading
@@ -318,9 +379,14 @@ func Merge(srcs []Source, rs []Reading) []Reading {
 			key = fmt.Sprintf("%s//%d", r.Provider, i)
 		}
 		if j, ok := idx[key]; ok {
-			if !contains(out[j].Homes, where) {
-				out[j].Homes = append(out[j].Homes, where)
+			homes := out[j].Homes
+			if !contains(homes, where) {
+				homes = append(homes, where)
 			}
+			if mergeRank(r) > mergeRank(out[j]) {
+				out[j] = r
+			}
+			out[j].Homes = homes
 			continue
 		}
 		r.Homes = []string{where}
@@ -341,6 +407,19 @@ func Merge(srcs []Source, rs []Reading) []Reading {
 		sort.Strings(out[i].Homes)
 	}
 	return out
+}
+
+// mergeRank orders the readings of one account for Merge.
+func mergeRank(r Reading) int {
+	switch {
+	case r.State.HasQuota() && !r.Stale:
+		return 3
+	case r.State.HasQuota():
+		return 2
+	case r.State != StateAuthRequired:
+		return 1
+	}
+	return 0
 }
 
 func contains(ss []string, s string) bool {
