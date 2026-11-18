@@ -62,6 +62,11 @@ CGO_ENABLED=0 go build -trimpath -o /dev/null ./cmd/ccleft
 `-race` locally, but CI runs it. Docker changes also require the image build
 shown in `CONTRIBUTING.md`.
 
+CI also gates pull requests on `govulncheck`
+(`.github/workflows/govulncheck.yml`), which scans with the toolchain of the
+`Dockerfile`'s pinned `golang` image. `CONTRIBUTING.md` shows how to run it
+and why a local result can differ.
+
 ## Pull requests
 
 Branch from `main`. Use Conventional Commit subjects and DCO-sign every commit
