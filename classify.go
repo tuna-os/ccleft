@@ -25,7 +25,7 @@ const (
 )
 
 // ClassifyHTTPResponse categorizes an HTTP response for retry decisions.
-// Returns (ErrorClass, shouldRetry, hasRetryAfter, retryAfterSeconds).
+// Returns (ErrorClass, shouldRetry, retryAfterSeconds).
 //
 // This replaces scattered HTTP status checks across provider implementations
 // with a unified classification strategy.
@@ -62,6 +62,10 @@ func ClassifyHTTPResponse(statusCode int, headers http.Header) (ErrorClass, bool
 
 // ClassifyNetworkError categorizes non-HTTP errors (timeouts, connection failures).
 // All network-level errors are treated as transient.
+//
+// Deprecated: it matches error text, so it disagrees with how ccleft itself
+// classifies transport errors (errors.Is against context.DeadlineExceeded in
+// the HTTP path). Classify with errors.Is instead.
 func ClassifyNetworkError(err error) ErrorClass {
 	if err == nil {
 		return ErrorUnknown
@@ -93,7 +97,12 @@ func retryAfterSeconds(headers http.Header) int {
 }
 
 // StateFromErrorClass maps error classification to a Reading State.
-// Used by providers to consistently report errors.
+//
+// Deprecated: an ErrorClass cannot carry the state a provider must report.
+// ErrorTransient covers both 429 (StateRateLimited) and 5xx (StateError), and
+// a 404 is StateError unless the provider knows its 404 means unsupported.
+// This mapping returns StateError for 429 and StateUnsupported for every 404;
+// ccleft's own HTTP path maps from the status code instead.
 func StateFromErrorClass(ec ErrorClass) State {
 	switch ec {
 	case ErrorTransient:
