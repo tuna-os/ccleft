@@ -2,7 +2,9 @@ package ccleft
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -101,3 +103,59 @@ func (r *providerRegistry) All() map[string]ProviderImplementation {
 }
 
 var defaultProviderRegistry = NewProviderRegistry()
+
+// credential is what identify() resolves from local files, with no network.
+type credential struct {
+	token   string
+	account string // fingerprint
+	plan    string
+	extra   map[string]string
+}
+
+type impl struct {
+	identify func(p *Prober, src Source) (credential, *Reading)
+	fetch    func(ctx context.Context, p *Prober, src Source, c credential) Reading
+}
+
+type providerAdapter struct {
+	name     Provider
+	identify func(p *Prober, src Source) (credential, *Reading)
+	fetch    func(ctx context.Context, p *Prober, src Source, c credential) Reading
+}
+
+func (a providerAdapter) Name() Provider { return a.name }
+
+func (a providerAdapter) Identify(p *Prober, src Source) (ProviderIdentity, *Reading) {
+	c, terminal := a.identify(p, src)
+	return ProviderIdentity{Account: c.account, Plan: c.plan, value: c}, terminal
+}
+
+func (a providerAdapter) Probe(ctx context.Context, p *Prober, src Source, identity ProviderIdentity) Reading {
+	c, ok := identity.value.(credential)
+	if !ok {
+		return fail(src.Provider, StateError, "provider_identity", errors.New("built-in provider received an invalid identity"))
+	}
+	return a.fetch(ctx, p, src, c)
+}
+
+func register(p Provider, i impl) {
+	provider := providerAdapter{name: p, identify: i.identify, fetch: i.fetch}
+	if err := defaultProviderRegistry.Register(string(p), provider); err != nil {
+		panic(err)
+	}
+	Providers = RegisteredProviders()
+}
+
+// RegisteredProviders returns a sorted list of all registered built-in
+// providers. Custom per-Prober registries do not alter the package defaults.
+func RegisteredProviders() []Provider {
+	registered := defaultProviderRegistry.All()
+	providers := make([]Provider, 0, len(registered))
+	for name := range registered {
+		providers = append(providers, Provider(name))
+	}
+	sort.Slice(providers, func(i, j int) bool {
+		return providers[i] < providers[j]
+	})
+	return providers
+}

@@ -1,9 +1,11 @@
 package ccleft
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ErrorClass categorizes probe failures for retry/fallback decisions.
@@ -105,4 +107,61 @@ func StateFromErrorClass(ec ErrorClass) State {
 	default:
 		return StateError
 	}
+}
+
+func classifyHTTP(pr Provider, resp *http.Response, body []byte, now time.Time) Reading {
+	code := resp.StatusCode
+	err := fmt.Errorf("HTTP %d: %s", code, snippet(body))
+	cause := "http_" + strconv.Itoa(code)
+
+	// Use centralized error classification for consistency across providers.
+	ec, isRetryable, _ := ClassifyHTTPResponse(code, resp.Header)
+
+	// Map error class to Reading state. A 404 stays an error here: only a
+	// provider that knows what its 404 means may report it as unsupported
+	// (copilot's no_copilot).
+	var st State
+	switch ec {
+	case ErrorAuthentication:
+		st = StateAuthRequired
+	case ErrorTransient:
+		if code == http.StatusTooManyRequests {
+			st = StateRateLimited
+		} else {
+			st = StateError
+		}
+	default:
+		st = StateError
+	}
+
+	r := fail(pr, st, cause, err)
+
+	// ParseRetryAfter also reads the HTTP-date form, which ClassifyHTTPResponse
+	// ignores.
+	if isRetryable {
+		r.retryAfter = ParseRetryAfter(resp.Header.Get("Retry-After"), now)
+	}
+
+	return r
+}
+
+// ParseRetryAfter parses a Retry-After header (delta-seconds or HTTP-date).
+// Returns 0 when absent or unparseable.
+func ParseRetryAfter(v string, now time.Time) time.Duration {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0
+	}
+	if n, err := strconv.ParseFloat(v, 64); err == nil {
+		if n <= 0 {
+			return 0
+		}
+		return time.Duration(n * float64(time.Second))
+	}
+	if t, err := http.ParseTime(v); err == nil {
+		if d := t.Sub(now); d > 0 {
+			return d
+		}
+	}
+	return 0
 }

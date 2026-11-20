@@ -38,7 +38,7 @@ const (
 )
 
 // Providers lists every provider ccleft knows, in canonical order.
-// It is auto-derived from registrations in prober.go to avoid duplication.
+// It is auto-derived from registrations in provider.go to avoid duplication.
 var Providers []Provider
 
 // ParseProvider validates a provider name.
